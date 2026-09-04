@@ -11,6 +11,7 @@
     --success: #28a745;
     --warn: #ffc107;
     --radius: 10px;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 * {
@@ -41,6 +42,7 @@ h3,
 
 button {
     font-family: inherit;
+    cursor: pointer;
 }
 
 input,
@@ -54,7 +56,7 @@ header.topbar {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 16px 18px 14px;
+    padding: 14px 18px 12px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     position: sticky;
@@ -140,6 +142,7 @@ p.hint {
     margin: 4px 0 16px;
 }
 
+/* ---------- Paneles ---------- */
 .panel {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -147,6 +150,7 @@ p.hint {
     border-radius: var(--radius);
     padding: 16px;
     margin-bottom: 14px;
+    box-shadow: var(--shadow);
 }
 
 .panel.quiet {
@@ -190,6 +194,7 @@ nav.bottomnav button {
     padding: 10px 4px 9px;
     font-size: 11px;
     cursor: pointer;
+    transition: color 0.2s;
 }
 
 nav.bottomnav button .ic {
@@ -219,6 +224,7 @@ nav.bottomnav button.active {
     font-weight: 600;
     font-size: 13.5px;
     cursor: pointer;
+    transition: all 0.2s;
 }
 
 .toggle-group button.active {
@@ -249,12 +255,14 @@ nav.bottomnav button.active {
     padding: 11px 12px;
     border-radius: 8px;
     font-size: 15px;
+    transition: border-color 0.2s;
 }
 
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
     outline: 1.5px solid var(--accent);
+    border-color: var(--accent);
 }
 
 .field textarea {
@@ -294,7 +302,7 @@ nav.bottomnav button.active {
     color: #fff;
 }
 
-.btn-primary:active {
+.btn-primary:hover {
     background: var(--accent-dim);
 }
 
@@ -304,7 +312,7 @@ nav.bottomnav button.active {
     color: var(--text);
 }
 
-.btn-outline:active {
+.btn-outline:hover {
     background: var(--surface-2);
 }
 
@@ -429,10 +437,11 @@ nav.bottomnav button.active {
     padding: 13px 14px;
     margin-bottom: 10px;
     transition: box-shadow 0.15s;
+    box-shadow: var(--shadow);
 }
 
 .pkg-card:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .pkg-top {
@@ -485,6 +494,11 @@ nav.bottomnav button.active {
     color: #721c24;
 }
 
+.badge.vencido {
+    background: #f8d7da;
+    color: #721c24;
+}
+
 .pkg-actions {
     display: flex;
     gap: 6px;
@@ -494,7 +508,7 @@ nav.bottomnav button.active {
 
 .pkg-actions button {
     flex: 1;
-    min-width: 70px;
+    min-width: 60px;
     background: var(--surface-2);
     border: 1px solid var(--border);
     color: var(--text);
@@ -502,6 +516,11 @@ nav.bottomnav button.active {
     border-radius: 7px;
     font-size: 12px;
     cursor: pointer;
+    transition: all 0.15s;
+}
+
+.pkg-actions button:hover {
+    background: var(--bg);
 }
 
 .pkg-actions button.wa {
@@ -509,14 +528,26 @@ nav.bottomnav button.active {
     border-color: rgba(40, 167, 69, .4);
 }
 
+.pkg-actions button.wa:hover {
+    background: rgba(40, 167, 69, .08);
+}
+
 .pkg-actions button.entregar {
     color: var(--accent);
     border-color: rgba(212, 160, 23, .4);
 }
 
+.pkg-actions button.entregar:hover {
+    background: rgba(212, 160, 23, .08);
+}
+
 .pkg-actions button.eliminar {
     color: var(--danger);
     border-color: rgba(220, 53, 69, .4);
+}
+
+.pkg-actions button.eliminar:hover {
+    background: rgba(220, 53, 69, .08);
 }
 
 /* ---------- Filtros ---------- */
@@ -536,6 +567,11 @@ nav.bottomnav button.active {
     font-size: 12.5px;
     cursor: pointer;
     font-weight: 600;
+    transition: all 0.2s;
+}
+
+.chip:hover {
+    background: var(--surface-2);
 }
 
 .chip.active {
@@ -606,6 +642,18 @@ nav.bottomnav button.active {
     font-size: 13.5px;
     z-index: 60;
     box-shadow: 0 6px 18px rgba(0, 0, 0, .15);
+    animation: toastin .25s ease;
+}
+
+@keyframes toastin {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
 }
 
 /* ---------- Estadísticas ---------- */
@@ -622,6 +670,7 @@ nav.bottomnav button.active {
     border-radius: var(--radius);
     padding: 12px;
     text-align: center;
+    box-shadow: var(--shadow);
 }
 
 .stat b {
@@ -647,4 +696,32 @@ nav.bottomnav button.active {
     height: 1px;
     background: var(--border);
     margin: 16px 0;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 480px) {
+    .row2 {
+        grid-template-columns: 1fr;
+    }
+
+    .btn-row .btn {
+        min-width: 80px;
+        font-size: 13px;
+        padding: 11px 12px;
+    }
+
+    .pkg-actions button {
+        min-width: 50px;
+        font-size: 11px;
+        padding: 6px 4px;
+    }
+
+    .code-badge {
+        font-size: 20px;
+        padding: 3px 12px;
+    }
+
+    h2.page-title {
+        font-size: 17px;
+    }
 }

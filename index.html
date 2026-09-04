@@ -80,6 +80,7 @@
                 <div class="chip active" data-f="todos" onclick="App.setFilter('todos')">Todos</div>
                 <div class="chip" data-f="pendiente" onclick="App.setFilter('pendiente')">⏳ Pendientes</div>
                 <div class="chip" data-f="entregado" onclick="App.setFilter('entregado')">✅ Entregados</div>
+                <div class="chip" data-f="vencido" onclick="App.setFilter('vencido')">⚠️ Vencidos</div>
             </div>
 
             <button class="btn btn-outline" style="margin-bottom:14px;" onclick="App.openManualForm()">➕ Registrar paquete manualmente</button>
@@ -120,7 +121,21 @@
                     <label>📈 Recargo diario (después de días gratis)</label>
                     <input id="cfgRecargo" type="number" step="0.5" value="0.50">
                 </div>
+                <div class="field">
+                    <label>📊 Mora máxima (días antes de alerta roja)</label>
+                    <input id="cfgDiasMora" type="number" value="15">
+                </div>
                 <button class="btn btn-primary" onclick="App.saveConfig()">💾 Guardar configuración</button>
+            </div>
+
+            <div class="panel quiet">
+                <h3 style="font-size:14px;margin:0 0 10px;">📊 Resumen de deuda</h3>
+                <div id="configResumenDeuda">
+                    <p class="hint">Precio base: <b>Bs 3.00</b></p>
+                    <p class="hint">Días gratis: <b>5</b></p>
+                    <p class="hint">Recargo diario: <b>Bs 0.50</b></p>
+                    <p class="hint">Mora máxima: <b>15 días</b></p>
+                </div>
             </div>
 
             <div class="panel quiet">
@@ -151,8 +166,19 @@
         </button>
     </nav>
 
+    <!-- ============================================================ -->
+    <!-- SCRIPTS - MÓDULOS SEPARADOS -->
+    <!-- ============================================================ -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.2/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-    <script src="script.js"></script>
+
+    <!-- Módulos -->
+    <script src="js/utils.js"></script>
+    <script src="js/database.js"></script>
+    <script src="js/parser.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/scanner.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
