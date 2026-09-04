@@ -1,14 +1,20 @@
 /**
  * UI - Renderizado de interfaz, modales, toasts, tarjetas
+ * VERSIÓN FINAL - Con métricas de confianza del OCR y corrección de botones
  */
 
 const UI = {
+    // ============================================================
+    // MODAL
+    // ============================================================
     openModal(innerHtml) {
         this.closeModal();
         const backdrop = document.createElement('div');
         backdrop.className = 'modal-backdrop';
         backdrop.id = 'activeModal';
-        backdrop.onclick = (e) => { if (e.target === backdrop) this.closeModal(); };
+        backdrop.onclick = (e) => {
+            if (e.target === backdrop) this.closeModal();
+        };
         const sheet = document.createElement('div');
         sheet.className = 'modal-sheet';
         sheet.innerHTML = innerHtml;
@@ -21,6 +27,9 @@ const UI = {
         if (m) m.remove();
     },
 
+    // ============================================================
+    // TOAST
+    // ============================================================
     toast(msg, type) {
         const t = document.createElement('div');
         t.className = 'toast';
@@ -31,6 +40,9 @@ const UI = {
         setTimeout(() => t.remove(), 2800);
     },
 
+    // ============================================================
+    // TARJETA DE PAQUETE
+    // ============================================================
     renderPkgCard(p, readOnly) {
         const cfg = Config.getConfig();
         const dias = daysBetween(p.fecha_ingreso);
@@ -56,14 +68,11 @@ const UI = {
             (estadoMora === 'vencido' ? '🔴 VENCIDO' : '⏳ Pendiente') :
             '✅ Entregado';
 
-        // Usamos data-action/data-id + un solo listener delegado en app.js
-        // (evita construir "onclick" con el id incrustado a mano, que es
-        // la fuente típica de errores de sintaxis en el HTML generado).
         const actions = readOnly ? '' : `
             <div class="pkg-actions">
-                ${p.estado==='pendiente' ? '<button class="entregar" data-action="entregar" data-id="'+p.id+'">✅ Entregar</button>' : ''}
+                ${p.estado === 'pendiente' ? '<button class="entregar" data-action="entregar" data-id="' + p.id + '">✅ Entregar</button>' : ''}
                 <button data-action="editar" data-id="${p.id}">✏️ Editar</button>
-                ${p.cliente_celular ? '<button class="wa" data-action="whatsapp" data-id="'+p.id+'">💬 WhatsApp</button>' : ''}
+                ${p.cliente_celular ? '<button class="wa" data-action="whatsapp" data-id="' + p.id + '">💬 WhatsApp</button>' : ''}
                 <button data-action="qr" data-id="${p.id}">📱 QR</button>
                 <button class="eliminar" data-action="eliminar" data-id="${p.id}">🗑️ Eliminar</button>
             </div>`;
@@ -78,17 +87,20 @@ const UI = {
                     <span class="badge ${badgeClass}">${badgeText}</span>
                 </div>
                 <div class="pkg-meta">
-                    ${p.detalle? '📦 '+p.detalle+' · ' : ''}
+                    ${p.detalle ? '📦 ' + p.detalle + ' · ' : ''}
                     📅 ${fmtDate(p.fecha_ingreso)} ${diasBadge}<br>
-                    💰 <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b>
-                    ${p.cliente_celular? ' · 📱 '+p.cliente_celular : ''}
-                    ${p.fecha_ticket ? ' · 🎫 '+p.fecha_ticket : ''}
-                    ${p.quien_dejo ? ' · 👤 '+p.quien_dejo : ''}
+                    💰 <b style="color:var(--accent)">${fmtMoney(deuda, cfg)}</b>
+                    ${p.cliente_celular ? ' · 📱 ' + p.cliente_celular : ''}
+                    ${p.fecha_ticket ? ' · 🎫 ' + p.fecha_ticket : ''}
+                    ${p.quien_dejo ? ' · 👤 ' + p.quien_dejo : ''}
                 </div>
                 ${actions}
             </div>`;
     },
 
+    // ============================================================
+    // ESTADÍSTICAS
+    // ============================================================
     renderStats(paquetes) {
         const cfg = Config.getConfig();
         const total = paquetes.length;
@@ -102,11 +114,14 @@ const UI = {
         document.getElementById('statRow').innerHTML = `
             <div class="stat"><b>${total}</b><span>Total</span></div>
             <div class="stat"><b>${pend}</b><span>Pendientes</span></div>
-            <div class="stat"><b>${fmtMoney(deudaTotal,cfg)}</b><span>Deuda total</span></div>
+            <div class="stat"><b>${fmtMoney(deudaTotal, cfg)}</b><span>Deuda total</span></div>
             <div class="stat" style="border-left:3px solid var(--danger);"><b style="color:var(--danger);">${vencidos}</b><span>Vencidos</span></div>
         `;
     },
 
+    // ============================================================
+    // MOSTRAR FORMULARIO CON DATOS DETECTADOS
+    // ============================================================
     mostrarFormularioConDatos(parsed) {
         const box = document.getElementById('scanResultBox');
 
@@ -133,6 +148,20 @@ const UI = {
             </p>` :
             '';
 
+        // Mostrar métricas del OCR especializado (si existen)
+        let infoConfianza = '';
+        if (parsed._codigo_confianza) {
+            const confianza = Math.round(parsed._codigo_confianza * 100);
+            const metodo = parsed._codigo_metodo || 'desconocido';
+            const frecuencia = parsed._codigo_frecuencia || 1;
+            const icono = confianza > 80 ? '✅' : confianza > 50 ? '⚠️' : '❌';
+            infoConfianza = `
+                <p class="hint" style="font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;margin-top:8px;">
+                    ${icono} OCR código: confianza ${confianza}% · ${frecuencia} variante(s) · método: ${metodo}
+                </p>
+            `;
+        }
+
         box.innerHTML = `
             <div class="panel success scan-result">
                 <h3>📦 ${parsed.cliente_nombre ? 'Datos detectados' : 'Registrar paquete'}</h3>
@@ -147,6 +176,8 @@ const UI = {
                            placeholder="Ej: A49, A10"
                            style="font-size:28px;font-weight:bold;text-align:center;background:white;border:2px solid var(--accent);">
                 </div>
+
+                ${infoConfianza}
 
                 <div class="field">
                     <label>👤 Nombre del cliente</label>
@@ -193,14 +224,9 @@ const UI = {
         }
     },
 
-    // --- CORREGIDO ---
-    // Antes: los botones usaban 'App.confirmarEntrega('+pkg.id+')' escrito
-    // literalmente DENTRO del template string (backticks), en vez de usar
-    // ${pkg.id}. Como no eran ${...}, el navegador guardaba el texto literal
-    // "+pkg.id+" en el atributo onclick, y al hacer click se llamaba a la
-    // función con un argumento inválido en vez del id real del paquete.
-    // Ahora todo usa data-action/data-id con un listener delegado (más
-    // seguro) o ${pkg.id} cuando se necesita interpolar directamente.
+    // ============================================================
+    // MOSTRAR PAQUETE EXISTENTE (CORREGIDO)
+    // ============================================================
     mostrarPaqueteExistente(pkg) {
         const box = document.getElementById('scanResultBox');
         const cfg = Config.getConfig();
@@ -212,9 +238,9 @@ const UI = {
                 <div style="margin-top:10px;"><span class="code-badge">${pkg.codigo}</span></div>
                 <p style="margin:10px 0 2px;font-size:15px;font-weight:600;">${pkg.cliente_nombre}</p>
                 <p class="hint" style="margin:2px 0;">Estado: ${pkg.estado} · Ingreso: ${fmtDate(pkg.fecha_ingreso)}</p>
-                <p class="hint" style="margin:2px 0 10px;">Deuda: <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b></p>
+                <p class="hint" style="margin:2px 0 10px;">Deuda: <b style="color:var(--accent)">${fmtMoney(deuda, cfg)}</b></p>
                 <div class="btn-row">
-                    ${pkg.estado==='pendiente' ? '<button class="btn btn-success" data-action="entregar" data-id="'+pkg.id+'">✅ Entregar</button>' : ''}
+                    ${pkg.estado === 'pendiente' ? '<button class="btn btn-success" data-action="entregar" data-id="' + pkg.id + '">✅ Entregar</button>' : ''}
                     <button class="btn btn-outline" data-action="editar" data-id="${pkg.id}">✏️ Editar</button>
                     <button class="btn btn-outline" onclick="App.limpiarResultado()">📷 Escanear otro</button>
                 </div>
@@ -224,9 +250,21 @@ const UI = {
         box.querySelectorAll('[data-action]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const id = parseInt(btn.dataset.id, 10);
-                if (btn.dataset.action === 'entregar') App.confirmarEntrega(id);
-                if (btn.dataset.action === 'editar') App.openEditForm(id);
+                if (btn.dataset.action === 'entregar') {
+                    App.confirmarEntrega(id);
+                } else if (btn.dataset.action === 'editar') {
+                    App.openEditForm(id);
+                }
             });
         });
+    },
+
+    // ============================================================
+    // MOSTRAR RESULTADO DE ESCANEO (legado - mantener compatibilidad)
+    // ============================================================
+    showScanResult(parsed, modo) {
+        // Esta función se mantiene por compatibilidad
+        // Pero ahora usamos mostrarFormularioConDatos() como principal
+        this.mostrarFormularioConDatos(parsed);
     }
 };
