@@ -1,20 +1,6 @@
 /**
  * SCANNER - Gestión de cámara, OCR y QR
- * VERSIÓN FINAL - Con DOBLE OCR ESPECIALIZADO
- *
- * ARQUITECTURA:
- * 1. OCR GENERAL: imagen completa → texto normal (nombre, fecha, detalle, celular)
- * 2. OCR CÓDIGO: ROI escalonado → múltiples variantes → votación → código
- * 3. FUSIÓN: código del OCR especializado tiene prioridad
- *
- * MEJORAS APLICADAS:
- * - ROI escalonado (principal → ampliado → fallback)
- * - Early exit con criterio de confianza
- * - Workers reutilizables
- * - Función centralizada ejecutarDobleOCR()
- * - Múltiples umbrales para diferentes iluminaciones
- * - Liberación de memoria de canvas
- * - Logs detallados con debug toggle
+ * VERSIÓN OPTIMIZADA PARA CÓDIGO GIGANTE (A49, A10, etc.)
  */
 
 const Scanner = {
@@ -28,11 +14,8 @@ const Scanner = {
     scanType: 'ocr',
     onResultCallback: null,
     isProcessing: false,
-    debug: true, // Cambiar a false para silenciar logs
+    debug: true,
 
-    // ------------------------------------------------------------
-    // INICIALIZACIÓN
-    // ------------------------------------------------------------
     init(onResult) {
         this.onResultCallback = onResult || function () {};
         if (this.debug) console.log('🔍 Scanner inicializado (debug ON)');
@@ -53,9 +36,6 @@ const Scanner = {
         document.getElementById('scanResultBox').innerHTML = '';
     },
 
-    // ------------------------------------------------------------
-    // CÁMARA
-    // ------------------------------------------------------------
     async startCamera() {
         document.getElementById('scanResultBox').innerHTML = '';
         if (this.scanType === 'qr') { return this.startQr(); }
@@ -131,9 +111,9 @@ const Scanner = {
         el.classList.toggle('show', !!show);
     },
 
-    // ------------------------------------------------------------
+    // ============================================================
     // WORKERS OCR (REUTILIZABLES)
-    // ------------------------------------------------------------
+    // ============================================================
     async getOcrWorker() {
         if (!this.ocrWorker) {
             this.setStatus('⏳ Cargando OCR general...', true);
@@ -149,19 +129,19 @@ const Scanner = {
             this.setStatus('⏳ Cargando OCR de código...', true);
             if (this.debug) console.log('⏳ Creando worker OCR código...');
             this.ocrCodeWorker = await Tesseract.createWorker('eng');
-            // Configuración específica: SOLO letras mayúsculas y números
             await this.ocrCodeWorker.setParameters({
                 tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-                tessedit_pageseg_mode: Tesseract.PSM.SINGLE_WORD
+                tessedit_pageseg_mode: Tesseract.PSM.SINGLE_WORD,
+                tessedit_ocr_engine_mode: Tesseract.OEM_LSTM_ONLY
             });
             if (this.debug) console.log('✅ Worker OCR código listo (whitelist: A-Z,0-9)');
         }
         return this.ocrCodeWorker;
     },
 
-    // ------------------------------------------------------------
-    // PREPARAR CANVAS PARA OCR GENERAL (texto normal)
-    // ------------------------------------------------------------
+    // ============================================================
+    // PREPARAR CANVAS PARA OCR GENERAL
+    // ============================================================
     prepararCanvasGeneral(source, srcWidth, srcHeight) {
         const canvas = document.getElementById('ocrCanvas');
         const targetWidth = 1400;
@@ -173,7 +153,6 @@ const Scanner = {
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
 
-        // Escala de grises + contraste moderado (NO binarización)
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const d = imgData.data;
         const contrast = 1.25;
@@ -187,9 +166,9 @@ const Scanner = {
         return canvas;
     },
 
-    // ------------------------------------------------------------
+    // ============================================================
     // 📸 FUNCIÓN CENTRALIZADA: DOBLE OCR
-    // ------------------------------------------------------------
+    // ============================================================
     async ejecutarDobleOCR(sourceCanvas) {
         if (this.debug) {
             console.log(`📐 Imagen: ${sourceCanvas.width}x${sourceCanvas.height}`);
@@ -223,7 +202,6 @@ const Scanner = {
 
         if (this.debug) console.log('📝 OCR GENERAL:', textoGeneral);
 
-        // Liberar memoria
         generalCanvas.width = 0;
         generalCanvas.height = 0;
 
@@ -240,7 +218,23 @@ const Scanner = {
 
         const parsed = Parser.parseTicketData(textoGeneral);
 
-        if (codeResult.codigo && esCodigoValido(codeResult.codigo)) {
+        // CORRECCIÓN: Si el OCR especializado detectó "E1" pero el código real es "A49"
+        // Intentamos corregir errores comunes de OCR
+        let codigoCorregido = null;
+        if (codeResult.codigo) {
+            codigoCorregido = this.corregirCodigoOCR(codeResult.codigo);
+            if (this.debug && codigoCorregido !== codeResult.codigo) {
+                console.log(`🔧 Corrección OCR: "${codeResult.codigo}" → "${codigoCorregido}"`);
+            }
+        }
+
+        if (codigoCorregido && esCodigoValido(codigoCorregido)) {
+            parsed.codigo = codigoCorregido;
+            if (this.debug) {
+                console.log(`✅ Código del OCR especializado (corregido): "${codigoCorregido}"`);
+                console.log(`   Confianza: ${codeResult.confianza}, Frecuencia: ${codeResult.frecuencia}, Método: ${codeResult.metodo}`);
+            }
+        } else if (codeResult.codigo && esCodigoValido(codeResult.codigo)) {
             parsed.codigo = codeResult.codigo;
             if (this.debug) {
                 console.log(`✅ Código del OCR especializado: "${codeResult.codigo}"`);
@@ -267,47 +261,101 @@ const Scanner = {
         return {
             parsed: parsed,
             textoGeneral: textoGeneral,
-            codigoEspecializado: codeResult.codigo,
+            codigoEspecializado: codigoCorregido || codeResult.codigo,
             confianzaCodigo: codeResult.confianza || 0,
             frecuenciaCodigo: codeResult.frecuencia || 0,
             metodoCodigo: codeResult.metodo || 'ninguno'
         };
     },
 
-    // ------------------------------------------------------------
-    // 🔍 OCR ESPECIALIZADO PARA CÓDIGO GRANDE (con ROI escalonado)
-    // ------------------------------------------------------------
+    // ============================================================
+    // 🔧 CORRECCIÓN DE ERRORES COMUNES DE OCR
+    // ============================================================
+    corregirCodigoOCR(texto) {
+        if (!texto) return null;
+
+        // Mapeo de confusiones visuales comunes
+        const correcciones = {
+            'E': 'A',   // E → A (muy común en A49)
+            'EL': 'A',  // EL → A
+            'J': 'A',   // J → A
+            'G': 'A',   // G → A
+            'O': '0',   // O → 0
+            'I': '1',   // I → 1
+            'L': '1',   // L → 1
+            'S': '5',   // S → 5
+            'B': '8',   // B → 8
+            'Z': '2',   // Z → 2
+            'G': '6',   // G → 6
+            'T': '1',   // T → 1
+            'Q': '0',   // Q → 0
+            'D': '0'    // D → 0
+        };
+
+        // Primero normalizar
+        let normalizado = texto.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+        // Si es muy corto (1-2 caracteres), intentar corregir
+        if (normalizado.length <= 2) {
+            // Intentar reemplazar caracteres problemáticos
+            let corregido = '';
+            for (const char of normalizado) {
+                corregido += correcciones[char] || char;
+            }
+            // Si después de corregir tenemos 2+ caracteres y empieza con letra
+            if (corregido.length >= 2 && /^[A-Z]/.test(corregido)) {
+                // Si el segundo carácter es número, devolver
+                if (/\d/.test(corregido[1])) {
+                    return corregido;
+                }
+            }
+        }
+
+        // Si parece un código pero con confusión visual
+        // Ejemplo: "A4g" → "A49" (g parece 9)
+        const m = normalizado.match(/^([A-Z])([A-Z]?)(\d*)$/);
+        if (m) {
+            const letter = correcciones[m[1]] || m[1];
+            let digits = '';
+            // Si el segundo carácter es una letra que parece número, corregir
+            if (m[2]) {
+                const digit = correcciones[m[2]] || m[2];
+                if (/\d/.test(digit)) digits += digit;
+            }
+            digits += m[3] || '';
+            if (digits.length >= 1) {
+                const resultado = letter + digits;
+                if (esCodigoValido(resultado)) return resultado;
+            }
+        }
+
+        return normalizado;
+    },
+
+    // ============================================================
+    // 🔍 OCR ESPECIALIZADO PARA CÓDIGO GRANDE
+    // ============================================================
     async extraerCodigoGrande(sourceCanvas) {
         const vW = sourceCanvas.width;
         const vH = sourceCanvas.height;
 
-        // ============================================================
-        // ESTRATEGIA ESCALONADA DE ROI
-        // ============================================================
+        // ROI ajustado para capturar mejor el código
         const rois = [
-            // ROI 1: Principal (donde normalmente está el código)
-            {
-                x: vW * 0.08,
-                y: vH * 0.03,
-                w: vW * 0.84,
-                h: vH * 0.30,
-                nombre: 'principal'
-            },
-            // ROI 2: Ampliado (más espacio)
+            // ROI 1: Principal (zona del código)
             {
                 x: vW * 0.05,
-                y: vH * 0.01,
+                y: vH * 0.02,
                 w: vW * 0.90,
-                h: vH * 0.45,
-                nombre: 'ampliado'
+                h: vH * 0.25,
+                nombre: 'principal'
             },
-            // ROI 3: Muy amplio (fallback)
+            // ROI 2: Ampliado
             {
-                x: vW * 0.02,
+                x: vW * 0.03,
                 y: vH * 0.01,
-                w: vW * 0.96,
-                h: vH * 0.50,
-                nombre: 'fallback'
+                w: vW * 0.94,
+                h: vH * 0.35,
+                nombre: 'ampliado'
             }
         ];
 
@@ -315,17 +363,14 @@ const Scanner = {
         let mejorConfianza = 0;
         let metodoUsado = null;
 
-        // ============================================================
-        // PROCESAR CADA ROI HASTA ENCONTRAR UN BUEN RESULTADO
-        // ============================================================
         for (const roi of rois) {
             if (this.debug) {
                 console.log(`📐 Probando ROI "${roi.nombre}": ${roi.x.toFixed(0)},${roi.y.toFixed(0)} ${roi.w.toFixed(0)}x${roi.h.toFixed(0)}`);
             }
 
-            // Extraer ROI
             const roiCanvas = document.createElement('canvas');
-            const escala = 3.5;
+            // Aumentar escala para mejor resolución
+            const escala = 4.5;
             roiCanvas.width = Math.round(roi.w * escala);
             roiCanvas.height = Math.round(roi.h * escala);
             const ctx = roiCanvas.getContext('2d');
@@ -337,18 +382,14 @@ const Scanner = {
                 0, 0, roiCanvas.width, roiCanvas.height
             );
 
-            // Procesar variantes de este ROI
             const resultadoRoi = await this.procesarVariantesCodigo(roiCanvas, roi.nombre);
 
-            // Liberar memoria
             roiCanvas.width = 0;
             roiCanvas.height = 0;
 
-            // Si encontramos un código válido con buena confianza, terminamos
             if (resultadoRoi.codigo && esCodigoValido(resultadoRoi.codigo)) {
                 const confianza = resultadoRoi.confianza || 0;
-                // Si la confianza es alta (>70%) o es el primer ROI, lo aceptamos
-                if (confianza > 70 || roi.nombre === 'principal') {
+                if (confianza > 30 || roi.nombre === 'principal') {
                     if (this.debug) {
                         console.log(`✅ ROI "${roi.nombre}" encontró: "${resultadoRoi.codigo}" (conf: ${confianza})`);
                         console.log(`🛑 Early exit - no se procesan más ROIs`);
@@ -361,8 +402,6 @@ const Scanner = {
                         intentos: rois.indexOf(roi) + 1
                     };
                 }
-
-                // Guardar como mejor resultado hasta ahora
                 if (confianza > mejorConfianza) {
                     mejorConfianza = confianza;
                     mejorResultado = resultadoRoi;
@@ -371,7 +410,6 @@ const Scanner = {
             }
         }
 
-        // Si ningún ROI dio un código válido, devolver el mejor encontrado
         if (mejorResultado && mejorResultado.codigo) {
             if (this.debug) {
                 console.log(`⚠️ Usando mejor resultado de ROI "${metodoUsado}": "${mejorResultado.codigo}" (conf: ${mejorConfianza})`);
@@ -389,16 +427,14 @@ const Scanner = {
         return { codigo: null, confianza: 0, frecuencia: 0, metodo: 'ninguno', intentos: rois.length };
     },
 
-    // ------------------------------------------------------------
+    // ============================================================
     // PROCESAR VARIANTES DE UN ROI
-    // ------------------------------------------------------------
+    // ============================================================
     async procesarVariantesCodigo(roiCanvas, roiNombre) {
         const resultados = [];
         const workerCode = await this.getOcrCodeWorker();
 
-        // ============================================================
-        // VARIANTE 1: Contraste fuerte + binarización agresiva
-        // ============================================================
+        // Variante 1: Contraste muy alto + binarización (para letras gruesas)
         const v1 = document.createElement('canvas');
         v1.width = roiCanvas.width;
         v1.height = roiCanvas.height;
@@ -406,15 +442,13 @@ const Scanner = {
         ctx1.drawImage(roiCanvas, 0, 0);
         const imgData1 = ctx1.getImageData(0, 0, v1.width, v1.height);
         const d1 = imgData1.data;
-        // Umbral 110 (más agresivo, para letras gruesas)
         for (let i = 0; i < d1.length; i += 4) {
             const gray = 0.299 * d1[i] + 0.587 * d1[i + 1] + 0.114 * d1[i + 2];
-            let val = (gray - 128) * 2.2 + 128;
+            let val = (gray - 128) * 2.5 + 128;
             val = Math.max(0, Math.min(255, val));
-            d1[i] = d1[i + 1] = d1[i + 2] = val > 110 ? 255 : 0;
+            d1[i] = d1[i + 1] = d1[i + 2] = val > 100 ? 255 : 0;
         }
         ctx1.putImageData(imgData1, 0, 0);
-
         try {
             const result = await workerCode.recognize(v1);
             const texto = result.data.text.trim();
@@ -425,9 +459,7 @@ const Scanner = {
         v1.width = 0;
         v1.height = 0;
 
-        // ============================================================
-        // VARIANTE 2: Binarización suave (umbral 135)
-        // ============================================================
+        // Variante 2: Binarización con umbral 130
         const v2 = document.createElement('canvas');
         v2.width = roiCanvas.width;
         v2.height = roiCanvas.height;
@@ -437,23 +469,20 @@ const Scanner = {
         const d2 = imgData2.data;
         for (let i = 0; i < d2.length; i += 4) {
             const gray = 0.299 * d2[i] + 0.587 * d2[i + 1] + 0.114 * d2[i + 2];
-            d2[i] = d2[i + 1] = d2[i + 2] = gray > 135 ? 255 : 0;
+            d2[i] = d2[i + 1] = d2[i + 2] = gray > 130 ? 255 : 0;
         }
         ctx2.putImageData(imgData2, 0, 0);
-
         try {
             const result = await workerCode.recognize(v2);
             const texto = result.data.text.trim();
             const confianza = result.data.confidence || 0;
-            if (texto) resultados.push({ texto, confianza, variante: 'binarizacion_suave' });
-            if (this.debug) console.log(`   📊 Variante "binarizacion_suave": "${texto}" (conf: ${confianza})`);
+            if (texto) resultados.push({ texto, confianza, variante: 'binarizacion_130' });
+            if (this.debug) console.log(`   📊 Variante "binarizacion_130": "${texto}" (conf: ${confianza})`);
         } catch (e) { if (this.debug) console.warn('Error en variante:', e); }
         v2.width = 0;
         v2.height = 0;
 
-        // ============================================================
-        // VARIANTE 3: Invertida (para tickets oscuros)
-        // ============================================================
+        // Variante 3: Binarización con umbral 150
         const v3 = document.createElement('canvas');
         v3.width = roiCanvas.width;
         v3.height = roiCanvas.height;
@@ -463,24 +492,20 @@ const Scanner = {
         const d3 = imgData3.data;
         for (let i = 0; i < d3.length; i += 4) {
             const gray = 0.299 * d3[i] + 0.587 * d3[i + 1] + 0.114 * d3[i + 2];
-            const val = gray > 135 ? 0 : 255;
-            d3[i] = d3[i + 1] = d3[i + 2] = val;
+            d3[i] = d3[i + 1] = d3[i + 2] = gray > 150 ? 255 : 0;
         }
         ctx3.putImageData(imgData3, 0, 0);
-
         try {
             const result = await workerCode.recognize(v3);
             const texto = result.data.text.trim();
             const confianza = result.data.confidence || 0;
-            if (texto) resultados.push({ texto, confianza, variante: 'invertida' });
-            if (this.debug) console.log(`   📊 Variante "invertida": "${texto}" (conf: ${confianza})`);
+            if (texto) resultados.push({ texto, confianza, variante: 'binarizacion_150' });
+            if (this.debug) console.log(`   📊 Variante "binarizacion_150": "${texto}" (conf: ${confianza})`);
         } catch (e) { if (this.debug) console.warn('Error en variante:', e); }
         v3.width = 0;
         v3.height = 0;
 
-        // ============================================================
-        // VARIANTE 4: Sin binarización (solo grises + contraste)
-        // ============================================================
+        // Variante 4: Solo grises + contraste (sin binarización)
         const v4 = document.createElement('canvas');
         v4.width = roiCanvas.width;
         v4.height = roiCanvas.height;
@@ -490,12 +515,11 @@ const Scanner = {
         const d4 = imgData4.data;
         for (let i = 0; i < d4.length; i += 4) {
             let gray = 0.299 * d4[i] + 0.587 * d4[i + 1] + 0.114 * d4[i + 2];
-            gray = (gray - 128) * 1.8 + 128;
+            gray = (gray - 128) * 2.0 + 128;
             gray = Math.max(0, Math.min(255, gray));
             d4[i] = d4[i + 1] = d4[i + 2] = gray;
         }
         ctx4.putImageData(imgData4, 0, 0);
-
         try {
             const result = await workerCode.recognize(v4);
             const texto = result.data.text.trim();
@@ -506,14 +530,40 @@ const Scanner = {
         v4.width = 0;
         v4.height = 0;
 
+        // Variante 5: Escala 2x (más grande)
+        const v5 = document.createElement('canvas');
+        v5.width = roiCanvas.width * 1.5;
+        v5.height = roiCanvas.height * 1.5;
+        const ctx5 = v5.getContext('2d');
+        ctx5.imageSmoothingEnabled = true;
+        ctx5.imageSmoothingQuality = 'high';
+        ctx5.drawImage(roiCanvas, 0, 0, v5.width, v5.height);
+        const imgData5 = ctx5.getImageData(0, 0, v5.width, v5.height);
+        const d5 = imgData5.data;
+        for (let i = 0; i < d5.length; i += 4) {
+            let gray = 0.299 * d5[i] + 0.587 * d5[i + 1] + 0.114 * d5[i + 2];
+            gray = (gray - 128) * 2.0 + 128;
+            gray = Math.max(0, Math.min(255, gray));
+            d5[i] = d5[i + 1] = d5[i + 2] = gray > 140 ? 255 : 0;
+        }
+        ctx5.putImageData(imgData5, 0, 0);
+        try {
+            const result = await workerCode.recognize(v5);
+            const texto = result.data.text.trim();
+            const confianza = result.data.confidence || 0;
+            if (texto) resultados.push({ texto, confianza, variante: 'escala_2x' });
+            if (this.debug) console.log(`   📊 Variante "escala_2x": "${texto}" (conf: ${confianza})`);
+        } catch (e) { if (this.debug) console.warn('Error en variante:', e); }
+        v5.width = 0;
+        v5.height = 0;
+
         // ============================================================
-        // SELECCIONAR EL MEJOR RESULTADO DE ESTE ROI
+        // SELECCIONAR EL MEJOR RESULTADO
         // ============================================================
         if (resultados.length === 0) {
             return { codigo: null, confianza: 0, frecuencia: 0 };
         }
 
-        // Normalizar y validar cada resultado
         const validos = [];
         for (const r of resultados) {
             const normalizado = normalizeCodigo(r.texto);
@@ -527,7 +577,6 @@ const Scanner = {
             }
         }
 
-        // Si no hay códigos válidos, intentar extraer de texto no válido
         if (validos.length === 0) {
             for (const r of resultados) {
                 const extraido = this.extraerCodigoDeTexto(r.texto);
@@ -546,7 +595,6 @@ const Scanner = {
             return { codigo: null, confianza: 0, frecuencia: 0 };
         }
 
-        // Votación por frecuencia
         const frecuencias = {};
         for (const v of validos) {
             frecuencias[v.normalizado] = (frecuencias[v.normalizado] || 0) + 1;
@@ -570,18 +618,13 @@ const Scanner = {
         };
     },
 
-    // ------------------------------------------------------------
-    // EXTRAER CÓDIGO DE TEXTO (fallback)
-    // ------------------------------------------------------------
     extraerCodigoDeTexto(texto) {
         if (!texto) return null;
-        // Buscar patrón letra+número
         const m = texto.match(/([A-Z])\s*(\d{1,4})/i);
         if (m) {
             const cand = normalizeCodigo(m[1] + m[2]);
             if (esCodigoValido(cand)) return cand;
         }
-        // Buscar en texto limpio
         const limpio = texto.replace(/[^A-Z0-9]/gi, '').toUpperCase();
         const m2 = limpio.match(/([A-Z])(\d{1,4})/);
         if (m2) {
@@ -591,9 +634,9 @@ const Scanner = {
         return null;
     },
 
-    // ------------------------------------------------------------
+    // ============================================================
     // 📸 CAPTURAR Y ESCANEAR
-    // ------------------------------------------------------------
+    // ============================================================
     async capturarYEscanear() {
         if (this.isProcessing) return;
         if (!this.stream) {
@@ -607,7 +650,6 @@ const Scanner = {
         try {
             const video = document.getElementById('video');
 
-            // Capturar en alta resolución
             const canvas = document.getElementById('ocrCanvas');
             const vW = video.videoWidth;
             const vH = video.videoHeight;
@@ -619,14 +661,12 @@ const Scanner = {
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Guardar original para el código (sin procesar)
             const originalCanvas = document.createElement('canvas');
             originalCanvas.width = canvas.width;
             originalCanvas.height = canvas.height;
             const ctxOrig = originalCanvas.getContext('2d');
             ctxOrig.drawImage(canvas, 0, 0);
 
-            // Usar la función centralizada
             const resultado = await this.ejecutarDobleOCR(originalCanvas);
 
             this.setStatus('✅ Escaneo completado', true);
@@ -646,7 +686,6 @@ const Scanner = {
                 });
             }
 
-            // Limpiar canvas
             originalCanvas.width = 0;
             originalCanvas.height = 0;
 
@@ -670,9 +709,9 @@ const Scanner = {
         }
     },
 
-    // ------------------------------------------------------------
+    // ============================================================
     // SUBIR FOTO
-    // ------------------------------------------------------------
+    // ============================================================
     async handleFileUpload(file) {
         if (!file) return;
         if (this.scanType !== 'ocr') { toast('Cambia a modo OCR', 'error'); return; }
@@ -732,9 +771,9 @@ const Scanner = {
         document.getElementById('fileInput').value = '';
     },
 
-    // ------------------------------------------------------------
-    // QR SCANNER (sin cambios)
-    // ------------------------------------------------------------
+    // ============================================================
+    // QR SCANNER
+    // ============================================================
     async startQr() {
         document.getElementById('video').style.display = 'none';
         document.getElementById('qr-reader').style.display = 'block';
