@@ -45,8 +45,8 @@
                 <video id="video" playsinline muted></video>
                 <div id="qr-reader"></div>
                 <div id="camPlaceholder">
-                    📸 Presiona "Iniciar cámara" para escanear el ticket.<br>
-                    <span style="font-size:12px;color:var(--muted);">Coloca el código grande arriba y los datos abajo.</span>
+                    📸 Presiona "Iniciar cámara" para ver el ticket.<br>
+                    <span style="font-size:12px;color:var(--muted);">Luego presiona "📸 Capturar" para escanear al instante.</span>
                 </div>
                 <div class="cam-frame-guide" id="camGuide"></div>
                 <div class="cam-status" id="camStatus"></div>
@@ -55,6 +55,7 @@
 
             <div class="btn-row">
                 <button class="btn btn-primary" id="btnStartCam" onclick="App.startCamera()">📷 Iniciar cámara</button>
+                <button class="btn btn-success" id="btnCapture" onclick="App.capturarYEscannear()" style="display:none;">📸 Capturar y Escanear</button>
                 <button class="btn btn-outline" id="btnStopCam" onclick="App.stopCamera()" style="display:none;">⏹ Detener</button>
                 <button class="btn btn-outline" id="btnSwitchCam" onclick="App.switchCamera()" style="display:none;">🔄 Cambiar</button>
             </div>
@@ -166,9 +167,6 @@
         </button>
     </nav>
 
-    <!-- ============================================================ -->
-    <!-- SCRIPTS - MÓDULOS SEPARADOS -->
-    <!-- ============================================================ -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.2/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 

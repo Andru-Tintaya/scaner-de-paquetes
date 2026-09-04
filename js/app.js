@@ -1,12 +1,11 @@
 /**
- * APP - Controlador principal de la aplicación
+ * APP - Controlador principal (ACTUALIZADO)
  */
 
 const App = {
     currentView: 'scanner',
     filter: 'todos',
 
-    // -------- Inicialización --------
     init() {
         // Configurar scanner
         Scanner.init((resultado) => {
@@ -25,18 +24,16 @@ const App = {
         document.getElementById('cfgRecargo').value = cfg.recargo_diario;
         document.getElementById('cfgDiasMora').value = cfg.dias_mora || 15;
 
-        // Renderizar
         this.renderPaquetes();
         this.renderPublicSearch();
         this.updateHeaderStats();
         this.showView('scanner');
 
-        // Configurar eventos de los botones del scanner
+        // Eventos
         document.getElementById('btnStartCam').onclick = () => Scanner.startCamera();
         document.getElementById('btnStopCam').onclick = () => Scanner.stop();
         document.getElementById('btnSwitchCam').onclick = () => Scanner.switchCamera();
-
-        // Evento de archivo
+        document.getElementById('btnCapture').onclick = () => Scanner.capturarYEscanear();
         document.getElementById('fileInput').onchange = (e) => {
             if (e.target.files[0]) {
                 Scanner.handleFileUpload(e.target.files[0]);
@@ -44,7 +41,7 @@ const App = {
             e.target.value = '';
         };
 
-        console.log('✅ Media Luna iniciado correctamente');
+        console.log('✅ Media Luna iniciado');
     },
 
     // -------- Navegación --------
@@ -74,35 +71,76 @@ const App = {
         document.getElementById('scanResultBox').innerHTML = '';
     },
 
-    // -------- Iniciar cámara (wrapper) --------
-    startCamera() {
-        Scanner.startCamera();
-    },
-
-    stopCamera() {
-        Scanner.stop();
-    },
-
-    switchCamera() {
-        Scanner.switchCamera();
-    },
-
-    handleFileUpload(e) {
-        if (e.target.files[0]) {
-            Scanner.handleFileUpload(e.target.files[0]);
-        }
-    },
+    // -------- Wrappers cámara --------
+    startCamera() { Scanner.startCamera(); },
+    stopCamera() { Scanner.stop(); },
+    switchCamera() { Scanner.switchCamera(); },
+    capturarYEscanear() { Scanner.capturarYEscanear(); },
 
     // -------- Resultado del escaneo --------
     handleScanResult(parsed) {
+        if (parsed._manual) {
+            // Modo manual: mostrar formulario vacío para corrección
+            this.showManualForm(parsed);
+            return;
+        }
         UI.showScanResult(parsed, Scanner.scanMode);
+    },
+
+    // -------- Formulario manual (para corrección) --------
+    showManualForm(parsed) {
+        const box = document.getElementById('scanResultBox');
+        const fechaDisplay = parsed.fecha_ticket ?
+            `<div class="field"><label>📅 Fecha del ticket</label><input id="frmFechaTicket" value="${parsed.fecha_ticket}" style="background:var(--surface-2);"></div>` :
+            '';
+
+        box.innerHTML = `
+            <div class="panel success scan-result">
+                <h3>📝 Corregir datos manualmente</h3>
+                <p class="hint" style="color:var(--warn);">El código gigante no se detectó. Escríbelo manualmente.</p>
+                <div class="field">
+                    <label>🔤 Código (corregir manualmente)</label>
+                    <input id="frmCodigo" value="${parsed.codigo||''}" placeholder="Ej: A49, A10" style="border:2px solid var(--accent);font-size:20px;font-weight:bold;">
+                </div>
+                <div class="field">
+                    <label>👤 Nombre del cliente</label>
+                    <input id="frmNombre" value="${(parsed.cliente_nombre||'').replace(/"/g,'')}" placeholder="Nombre completo">
+                </div>
+                <div class="row2">
+                    <div class="field">
+                        <label>📱 Celular</label>
+                        <input id="frmCelular" value="${parsed.cliente_celular||''}" placeholder="71234567">
+                    </div>
+                    <div class="field">
+                        <label>📦 Detalle</label>
+                        <input id="frmDetalle" value="${parsed.detalle||''}" placeholder="ELECTRONICOS">
+                    </div>
+                </div>
+                ${fechaDisplay}
+                <div class="field">
+                    <label>👤 Quién dejó</label>
+                    <input id="frmQuienDejo" placeholder="Opcional">
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-outline" onclick="App.limpiarResultado()">🗑️ Cancelar</button>
+                    <button class="btn btn-primary" onclick="App.guardarPaqueteDesdeForm()">💾 Guardar paquete</button>
+                </div>
+            </div>`;
     },
 
     // -------- Guardar desde formulario --------
     guardarPaqueteDesdeForm() {
-        const codigo = document.getElementById('frmCodigo').value;
+        const codigo = normalizeCodigo(document.getElementById('frmCodigo').value);
         const nombre = document.getElementById('frmNombre').value.trim();
-        if (!nombre) { toast('El nombre es obligatorio', 'error'); return; }
+
+        if (!codigo || !esCodigoValido(codigo)) {
+            toast('❌ Código inválido. Formato: Letra + números (ej: A49)', 'error');
+            return;
+        }
+        if (!nombre) {
+            toast('❌ El nombre es obligatorio', 'error');
+            return;
+        }
 
         const result = DB.crearPaquete({
             codigo: codigo,
@@ -125,6 +163,26 @@ const App = {
         }
     },
 
+    // -------- Mostrar paquete existente --------
+    showExistingPackage(pkg) {
+        const box = document.getElementById('scanResultBox');
+        const cfg = Config.getConfig();
+        const deuda = Config.calcularDeuda(pkg, cfg);
+
+        box.innerHTML = `
+            <div class="panel warn">
+                <b style="color:var(--warn);">⚠️ PAQUETE YA REGISTRADO</b>
+                <div style="margin-top:10px;"><span class="code-badge">${pkg.codigo}</span></div>
+                <p style="margin:10px 0 2px;font-size:15px;font-weight:600;">${pkg.cliente_nombre}</p>
+                <p class="hint" style="margin:2px 0;">Estado: ${pkg.estado} · Ingreso: ${fmtDate(pkg.fecha_ingreso)}</p>
+                <p class="hint" style="margin:2px 0 10px;">Deuda: <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b></p>
+                <div class="btn-row">
+                    ${pkg.estado==='pendiente' ? '<button class="btn btn-success" onclick="App.confirmarEntrega('+pkg.id+')">✅ Entregar</button>' : ''}
+                    <button class="btn btn-outline" onclick="App.openEditForm('+pkg.id+')">✏️ Editar</button>
+                </div>
+            </div>`;
+    },
+
     limpiarResultado() {
         document.getElementById('scanResultBox').innerHTML = '';
     },
@@ -133,14 +191,14 @@ const App = {
     openManualForm() {
         const html = `
             <h3>📦 Registrar paquete manualmente</h3>
-            <div class="field"><label>Código</label><input id="mCodigo" placeholder="Ej: A6, A49"></div>
-            <div class="field"><label>Nombre del cliente</label><input id="mNombre"></div>
+            <div class="field"><label>🔤 Código</label><input id="mCodigo" placeholder="Ej: A6, A49" style="font-size:20px;font-weight:bold;"></div>
+            <div class="field"><label>👤 Nombre del cliente</label><input id="mNombre"></div>
             <div class="row2">
-                <div class="field"><label>Celular</label><input id="mCelular"></div>
-                <div class="field"><label>Detalle</label><input id="mDetalle"></div>
+                <div class="field"><label>📱 Celular</label><input id="mCelular"></div>
+                <div class="field"><label>📦 Detalle</label><input id="mDetalle"></div>
             </div>
-            <div class="field"><label>Fecha del ticket</label><input id="mFechaTicket" placeholder="DD/MM/YYYY HH:MM"></div>
-            <div class="field"><label>Quién dejó</label><input id="mQuienDejo" placeholder="Opcional"></div>
+            <div class="field"><label>📅 Fecha del ticket</label><input id="mFechaTicket" placeholder="DD/MM/YYYY HH:MM"></div>
+            <div class="field"><label>👤 Quién dejó</label><input id="mQuienDejo" placeholder="Opcional"></div>
             <div class="btn-row">
                 <button class="btn btn-outline" onclick="UI.closeModal()">Cancelar</button>
                 <button class="btn btn-primary" onclick="App.guardarManual()">💾 Guardar</button>
@@ -174,26 +232,6 @@ const App = {
         }
     },
 
-    // -------- Mostrar paquete existente --------
-    showExistingPackage(pkg) {
-        const box = document.getElementById('scanResultBox');
-        const cfg = Config.getConfig();
-        const deuda = Config.calcularDeuda(pkg, cfg);
-
-        box.innerHTML = `
-            <div class="panel warn">
-                <b style="color:var(--warn);">⚠️ PAQUETE YA REGISTRADO</b>
-                <div style="margin-top:10px;"><span class="code-badge">${pkg.codigo}</span></div>
-                <p style="margin:10px 0 2px;font-size:15px;font-weight:600;">${pkg.cliente_nombre}</p>
-                <p class="hint" style="margin:2px 0;">Estado: ${pkg.estado} · Ingreso: ${fmtDate(pkg.fecha_ingreso)}</p>
-                <p class="hint" style="margin:2px 0 10px;">Deuda: <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b></p>
-                <div class="btn-row">
-                    ${pkg.estado==='pendiente' ? '<button class="btn btn-success" onclick="App.confirmarEntrega('+pkg.id+')">✅ Entregar</button>' : ''}
-                    <button class="btn btn-outline" onclick="App.openEditForm('+pkg.id+')">✏️ Editar</button>
-                </div>
-            </div>`;
-    },
-
     // -------- Lista de paquetes --------
     setFilter(f) {
         this.filter = f;
@@ -205,7 +243,6 @@ const App = {
         const q = (document.getElementById('searchBox')?.value || '').trim().toLowerCase();
         let paquetes = q ? DB.buscarPaquetes(q) : DB.getPaquetes();
 
-        // Filtrar por estado
         if (this.filter !== 'todos') {
             if (this.filter === 'vencido') {
                 const cfg = Config.getConfig();
@@ -218,41 +255,26 @@ const App = {
         }
 
         paquetes.sort((a, b) => b.fecha_ingreso.localeCompare(a.fecha_ingreso));
-
-        // Estadísticas
         UI.renderStats(DB.getPaquetes());
 
-        // Lista
         const list = document.getElementById('pkgList');
         if (paquetes.length === 0) {
             list.innerHTML = '<div class="empty-state">📭 No hay paquetes que coincidan.</div>';
             return;
         }
 
-        // Delegación de eventos para acciones
         list.innerHTML = paquetes.map(p => UI.renderPkgCard(p, false)).join('');
 
-        // Event listeners para botones de acción
         list.querySelectorAll('[data-action]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const action = btn.dataset.action;
                 const id = parseInt(btn.dataset.id);
                 switch (action) {
-                    case 'editar':
-                        this.openEditForm(id);
-                        break;
-                    case 'entregar':
-                        this.confirmarEntrega(id);
-                        break;
-                    case 'eliminar':
-                        this.eliminarPaquete(id);
-                        break;
-                    case 'whatsapp':
-                        this.enviarWhatsapp(id);
-                        break;
-                    case 'qr':
-                        this.verQr(id);
-                        break;
+                    case 'editar': this.openEditForm(id); break;
+                    case 'entregar': this.confirmarEntrega(id); break;
+                    case 'eliminar': this.eliminarPaquete(id); break;
+                    case 'whatsapp': this.enviarWhatsapp(id); break;
+                    case 'qr': this.verQr(id); break;
                 }
             });
         });
@@ -284,14 +306,14 @@ const App = {
 
         const html = `
             <h3>✏️ Editar paquete ${p.codigo}</h3>
-            <div class="field"><label>Código</label><input id="eCodigo" value="${p.codigo}"></div>
-            <div class="field"><label>Nombre</label><input id="eNombre" value="${p.cliente_nombre}"></div>
+            <div class="field"><label>🔤 Código</label><input id="eCodigo" value="${p.codigo}" style="font-size:18px;font-weight:bold;"></div>
+            <div class="field"><label>👤 Nombre</label><input id="eNombre" value="${p.cliente_nombre}"></div>
             <div class="row2">
-                <div class="field"><label>Celular</label><input id="eCelular" value="${p.cliente_celular||''}"></div>
-                <div class="field"><label>Detalle</label><input id="eDetalle" value="${p.detalle||''}"></div>
+                <div class="field"><label>📱 Celular</label><input id="eCelular" value="${p.cliente_celular||''}"></div>
+                <div class="field"><label>📦 Detalle</label><input id="eDetalle" value="${p.detalle||''}"></div>
             </div>
-            <div class="field"><label>Fecha del ticket</label><input id="eFechaTicket" value="${p.fecha_ticket||''}"></div>
-            <div class="field"><label>Quién dejó</label><input id="eQuienDejo" value="${p.quien_dejo||''}"></div>
+            <div class="field"><label>📅 Fecha del ticket</label><input id="eFechaTicket" value="${p.fecha_ticket||''}"></div>
+            <div class="field"><label>👤 Quién dejó</label><input id="eQuienDejo" value="${p.quien_dejo||''}"></div>
             <div class="btn-row">
                 <button class="btn btn-outline" onclick="UI.closeModal()">Cancelar</button>
                 <button class="btn btn-primary" onclick="App.guardarEdicion(${p.id})">💾 Guardar</button>
@@ -323,7 +345,6 @@ const App = {
     confirmarEntrega(id) {
         const p = DB.getPaquete(id);
         if (!p || p.estado !== 'pendiente') return;
-
         const cfg = Config.getConfig();
         const deuda = Config.calcularDeuda(p, cfg);
 
@@ -344,7 +365,6 @@ const App = {
     entregarPaquete(id) {
         const monto = parseFloat(document.getElementById('montoPagado').value) || 0;
         const result = DB.entregarPaquete(id, monto);
-
         UI.closeModal();
         if (result.success) {
             toast('✅ Paquete entregado', 'success');
@@ -357,11 +377,10 @@ const App = {
         }
     },
 
-    // -------- Eliminar (DELETE) --------
+    // -------- Eliminar --------
     eliminarPaquete(id) {
         const p = DB.getPaquete(id);
         if (!p) return;
-
         const html = `
             <h3>🗑️ Eliminar paquete</h3>
             <p class="hint">¿Eliminar <b style="color:var(--text)">${p.codigo} — ${p.cliente_nombre}</b>? Esta acción no se puede deshacer.</p>
@@ -388,7 +407,6 @@ const App = {
     enviarWhatsapp(id) {
         const p = DB.getPaquete(id);
         if (!p || !p.cliente_celular) return;
-
         const cfg = Config.getConfig();
         const deuda = Config.calcularDeuda(p, cfg);
         const primerNombre = p.cliente_nombre.split(' ')[0];
@@ -406,7 +424,6 @@ const App = {
     verQr(id) {
         const p = DB.getPaquete(id);
         if (!p) return;
-
         const html = `
             <h3>📱 QR del paquete ${p.codigo}</h3>
             <p class="hint">Token único para este paquete (incluso si el código ${p.codigo} se reutiliza).</p>
@@ -424,14 +441,13 @@ const App = {
             recargo_diario: parseFloat(document.getElementById('cfgRecargo').value) || 0,
             dias_mora: parseInt(document.getElementById('cfgDiasMora').value) || 15
         };
-
         Config.saveConfig(cfg);
         toast('✅ Configuración guardada', 'success');
         this.renderPaquetes();
         this.updateHeaderStats();
     },
 
-    // -------- Eliminar todos los datos --------
+    // -------- Eliminar todos --------
     eliminarTodosLosDatos() {
         const html = `
             <h3>⚠️ ELIMINAR TODOS LOS DATOS</h3>
@@ -448,26 +464,21 @@ const App = {
         DB.eliminarTodos();
         UI.closeModal();
         toast('🗑️ Todos los datos eliminados');
-
-        // Recargar configuración por defecto
         const cfg = Config.getConfig();
         document.getElementById('cfgMoneda').value = cfg.moneda;
         document.getElementById('cfgPrecioBase').value = cfg.precio_base;
         document.getElementById('cfgDiasGratis').value = cfg.dias_gratis;
         document.getElementById('cfgRecargo').value = cfg.recargo_diario;
         document.getElementById('cfgDiasMora').value = cfg.dias_mora || 15;
-
         this.renderPaquetes();
         this.updateHeaderStats();
         document.getElementById('scanResultBox').innerHTML = '';
     },
 
-    // -------- Actualizar header --------
     updateHeaderStats() {
         const pend = DB.getPaquetes().filter(p => p.estado === 'pendiente').length;
         document.getElementById('headerStats').innerHTML = `<b>${pend}</b> pendientes`;
     }
 };
 
-// Inicializar
 document.addEventListener('DOMContentLoaded', () => App.init());
