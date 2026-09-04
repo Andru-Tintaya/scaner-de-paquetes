@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Media Luna — Control de Paquetería</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f0f2f5;
+    --surface:#ffffff;
+    --surface-2:#e8eaed;
+    --border:#d1d5db;
+    --text:#1a1a2e;
+    --muted:#6b7280;
+    --accent:#d4a017;
+    --accent-dim:#b8860b;
+    --danger:#dc3545;
+    --success:#28a745;
+    --warn:#ffc107;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding-bottom:78px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif;}
+  button{font-family:inherit;}
+  input,select,textarea{font-family:inherit;}
+
+  /* ---------- Header ---------- */
+  header.topbar{
+    display:flex;align-items:center;gap:10px;
+    padding:16px 18px 14px;
+    border-bottom:1px solid var(--border);
+    background:var(--surface);
+    position:sticky;top:0;z-index:20;
+  }
+  .crescent{
+    width:34px;height:34px;flex:0 0 auto;
+  }
+  header.topbar .brand{display:flex;flex-direction:column;line-height:1.15;}
+  header.topbar .brand b{font-size:17px;letter-spacing:0.5px;font-family:'Space Grotesk',sans-serif;font-weight:700;color:var(--accent);}
+  header.topbar .brand span{font-size:11.5px;color:var(--muted);}
+  header.topbar .stats-mini{margin-left:auto;display:flex;gap:12px;font-size:12px;color:var(--muted);}
+  header.topbar .stats-mini b{color:var(--text);font-weight:600;}
+
+  /* ---------- Layout ---------- */
+  main{padding:16px 14px 24px;max-width:640px;margin:0 auto;}
+  .view{display:none;}
+  .view.active{display:block;animation:fadein .18s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+
+  h2.page-title{font-size:19px;margin:2px 0 14px;font-weight:600;}
+  p.hint{color:var(--muted);font-size:13px;line-height:1.5;margin:4px 0 16px;}
+
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-left:3px solid var(--accent);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .panel.quiet{border-left-color:var(--border);}
+  .panel.danger{border-left-color:var(--danger);}
+  .panel.success{border-left-color:var(--success);}
+  .panel.warn{border-left-color:var(--warn);}
+
+  /* ---------- Bottom nav ---------- */
+  nav.bottomnav{
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--surface);border-top:1px solid var(--border);
+    display:flex;z-index:30;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav.bottomnav button{
+    flex:1;background:none;border:none;color:var(--muted);
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:10px 4px 9px;font-size:11px;cursor:pointer;
+  }
+  nav.bottomnav button .ic{font-size:19px;}
+  nav.bottomnav button.active{color:var(--accent);}
+
+  /* ---------- Toggle group ---------- */
+  .toggle-group{display:flex;background:var(--surface-2);border-radius:9px;padding:3px;gap:3px;}
+  .toggle-group button{
+    flex:1;padding:10px 6px;border:none;border-radius:7px;background:transparent;
+    color:var(--muted);font-weight:600;font-size:13.5px;cursor:pointer;
+  }
+  .toggle-group button.active{background:var(--accent);color:#fff;}
+
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-weight:500;}
+  .field input,.field select,.field textarea{
+    width:100%;background:var(--bg);border:1px solid var(--border);
+    color:var(--text);padding:11px 12px;border-radius:8px;font-size:15px;
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{outline:1.5px solid var(--accent);}
+  .field textarea{resize:vertical;min-height:60px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    width:100%;padding:13px 16px;border-radius:9px;border:none;
+    font-size:15px;font-weight:600;cursor:pointer;margin-top:4px;
+    transition:all 0.15s;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:active{background:var(--accent-dim);}
+  .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text);}
+  .btn-outline:active{background:var(--surface-2);}
+  .btn-danger{background:var(--danger);color:#fff;}
+  .btn-success{background:var(--success);color:#fff;}
+  .btn-sm{width:auto;padding:8px 12px;font-size:13px;margin-top:0;}
+  .btn-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .btn-row .btn{width:auto;flex:1;min-width:110px;}
+
+  /* ---------- Scanner ---------- */
+  #camWrap{
+    position:relative;background:#1a1a2e;border-radius:var(--radius);overflow:hidden;
+    aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--border);
+  }
+  #video{width:100%;height:100%;object-fit:cover;display:none;}
+  #qr-reader{width:100%;display:none;}
+  #camPlaceholder{color:var(--muted);font-size:13px;text-align:center;padding:20px;}
+  .cam-frame-guide{
+    position:absolute;inset:14%;border:2px dashed rgba(212,160,23,.6);border-radius:10px;pointer-events:none;
+    display:none;
+  }
+  .cam-status{
+    position:absolute;bottom:10px;left:10px;right:10px;
+    background:rgba(0,0,0,.78);color:#fff;
+    font-size:12.5px;padding:8px 10px;border-radius:8px;text-align:center;
+    display:none;
+  }
+  .cam-status.show{display:block;}
+
+  .scan-result{margin-top:14px;}
+  .scan-result h3{font-size:14px;margin:0 0 10px;color:var(--accent);}
+  .code-badge{
+    display:inline-block;font-family:'Space Grotesk',sans-serif;font-weight:700;
+    font-size:24px;background:var(--bg);border:2px solid var(--accent);
+    color:var(--accent);padding:4px 16px;border-radius:8px;letter-spacing:1px;
+  }
+
+  .pkg-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:13px 14px;margin-bottom:10px;
+    transition:box-shadow 0.15s;
+  }
+  .pkg-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.06);}
+  .pkg-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+  .pkg-code{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:var(--accent);}
+  .pkg-name{font-size:14.5px;font-weight:600;margin-top:1px;}
+  .pkg-meta{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.5;}
+  .badge{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;}
+  .badge.pendiente{background:#fff3cd;color:#856404;}
+  .badge.entregado{background:#d4edda;color:#155724;}
+  .badge.alerta{background:#f8d7da;color:#721c24;}
+  .pkg-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px;}
+  .pkg-actions button{
+    flex:1;min-width:70px;background:var(--surface-2);border:1px solid var(--border);
+    color:var(--text);padding:8px 6px;border-radius:7px;font-size:12px;cursor:pointer;
+  }
+  .pkg-actions button.wa{color:var(--success);border-color:rgba(40,167,69,.4);}
+  .pkg-actions button.entregar{color:var(--accent);border-color:rgba(212,160,23,.4);}
+  .pkg-actions button.eliminar{color:var(--danger);border-color:rgba(220,53,69,.4);}
+
+  .filters{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+  .chip{
+    background:var(--surface);border:1px solid var(--border);color:var(--muted);
+    padding:7px 13px;border-radius:20px;font-size:12.5px;cursor:pointer;font-weight:600;
+  }
+  .chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+  .empty-state{text-align:center;color:var(--muted);font-size:13px;padding:34px 10px;}
+
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;
+    display:flex;align-items:flex-end;justify-content:center;
+  }
+  .modal-sheet{
+    background:var(--surface);border:1px solid var(--border);border-bottom:none;
+    border-radius:16px 16px 0 0;width:100%;max-width:640px;max-height:88vh;overflow-y:auto;
+    padding:18px 16px 24px;animation:slideup .2s ease;
+  }
+  @keyframes slideup{from{transform:translateY(30px);opacity:0;}to{transform:none;opacity:1;}}
+  .modal-sheet h3{margin:0 0 14px;font-size:16.5px;}
+
+  .toast{
+    position:fixed;left:50%;bottom:92px;transform:translateX(-50%);
+    background:var(--surface);border:1px solid var(--accent);color:var(--text);
+    padding:10px 16px;border-radius:9px;font-size:13.5px;z-index:60;
+    box-shadow:0 6px 18px rgba(0,0,0,.15);
+  }
+
+  .stat-row{display:flex;gap:10px;margin-bottom:14px;}
+  .stat{
+    flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:12px;text-align:center;
+  }
+  .stat b{display:block;font-size:20px;font-family:'Space Grotesk',sans-serif;color:var(--accent);}
+  .stat span{font-size:11px;color:var(--muted);}
+
+  .kicker{font-size:11.5px;color:var(--muted);margin-bottom:6px;font-weight:500;}
+  .divider{height:1px;background:var(--border);margin:16px 0;}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <svg class="crescent" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <path d="M23 4 C14 4 7 11 7 20 C7 29 14 36 23 36 C17.5 32.5 14 27 14 20 C14 13 17.5 7.5 23 4 Z" fill="#d4a017"/>
+  </svg>
+  <div class="brand"><b>MEDIA LUNA</b><span>Control de paquetería</span></div>
+  <div class="stats-mini" id="headerStats"><b>0</b> pendientes</div>
+</header>
+
+<main>
+
+  <!-- SCANNER -->
+  <section id="view-scanner" class="view active">
+    <h2 class="page-title">📷 Escáner de paquetes</h2>
+
+    <div class="panel quiet">
+      <div class="kicker">Modo</div>
+      <div class="toggle-group" style="margin-bottom:12px;">
+        <button id="modeRegistro" class="active" onclick="App.setScanMode('registro')">📦 Registrar</button>
+        <button id="modeConsulta" onclick="App.setScanMode('consulta')">🔍 Consultar</button>
+      </div>
+      <div class="kicker">Tipo de escaneo</div>
+      <div class="toggle-group">
+        <button id="typeOcr" class="active" onclick="App.setScanType('ocr')">📄 OCR (texto)</button>
+        <button id="typeQr" onclick="App.setScanType('qr')">📱 QR</button>
+      </div>
+    </div>
+
+    <div id="camWrap">
+      <video id="video" playsinline muted></video>
+      <div id="qr-reader"></div>
+      <div id="camPlaceholder">📸 Presiona "Iniciar cámara" para escanear el ticket.<br><span style="font-size:12px;color:var(--muted);">Coloca el código grande arriba y los datos abajo.</span></div>
+      <div class="cam-frame-guide" id="camGuide"></div>
+      <div class="cam-status" id="camStatus"></div>
+    </div>
+    <canvas id="ocrCanvas" style="display:none;"></canvas>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnStartCam" onclick="App.startCamera()">📷 Iniciar cámara</button>
+      <button class="btn btn-outline" id="btnStopCam" onclick="App.stopCamera()" style="display:none;">⏹ Detener</button>
+      <button class="btn btn-outline" id="btnSwitchCam" onclick="App.switchCamera()" style="display:none;">🔄 Cambiar</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">🖼 Subir foto del ticket</button>
+      <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none" onchange="App.handleFileUpload(event)">
+    </div>
+
+    <div id="scanResultBox"></div>
+  </section>
+
+  <!-- PAQUETES -->
+  <section id="view-paquetes" class="view">
+    <h2 class="page-title">📦 Paquetes</h2>
+
+    <div class="stat-row" id="statRow"></div>
+
+    <div class="field"><input id="searchBox" placeholder="🔍 Buscar por código, nombre o celular..." oninput="App.renderPaquetes()"></div>
+    <div class="filters">
+      <div class="chip active" data-f="todos" onclick="App.setFilter('todos')">Todos</div>
+      <div class="chip" data-f="pendiente" onclick="App.setFilter('pendiente')">⏳ Pendientes</div>
+      <div class="chip" data-f="entregado" onclick="App.setFilter('entregado')">✅ Entregados</div>
+    </div>
+
+    <button class="btn btn-outline" style="margin-bottom:14px;" onclick="App.openManualForm()">➕ Registrar paquete manualmente</button>
+
+    <div id="pkgList"></div>
+  </section>
+
+  <!-- CONSULTA PÚBLICA -->
+  <section id="view-consulta" class="view">
+    <h2 class="page-title">🔎 Consulta pública</h2>
+    <p class="hint">Busca tu paquete por código o nombre. No se requiere iniciar sesión.</p>
+    <div class="field"><input id="publicSearchBox" placeholder="🔍 Código o nombre..." oninput="App.renderPublicSearch()"></div>
+    <div id="publicResultList"></div>
+  </section>
+
+  <!-- CONFIG -->
+  <section id="view-config" class="view">
+    <h2 class="page-title">⚙️ Configuración</h2>
+    <div class="panel">
+      <div class="field"><label>Moneda</label><input id="cfgMoneda" value="Bs"></div>
+      <div class="row2">
+        <div class="field"><label>Precio base (Bs)</label><input id="cfgPrecioBase" type="number" step="0.5" value="3.00"></div>
+        <div class="field"><label>Días gratis</label><input id="cfgDiasGratis" type="number" value="5"></div>
+      </div>
+      <div class="field"><label>Recargo diario (Bs)</label><input id="cfgRecargo" type="number" step="0.5" value="0.50"></div>
+      <button class="btn btn-primary" onclick="App.saveConfig()">💾 Guardar configuración</button>
+    </div>
+    <div class="panel quiet">
+      <b style="font-size:13px;">📌 Datos guardados localmente</b>
+      <p class="hint" style="margin-bottom:0;">Esta versión usa localStorage. Todos los datos se guardan en tu navegador.</p>
+    </div>
+  </section>
+
+</main>
+
+<nav class="bottomnav">
+  <button id="navScanner" class="active" onclick="App.showView('scanner')"><span class="ic">📷</span>Escanear</button>
+  <button id="navPaquetes" onclick="App.showView('paquetes')"><span class="ic">📦</span>Paquetes</button>
+  <button id="navConsulta" onclick="App.showView('consulta')"><span class="ic">🔎</span>Consulta</button>
+  <button id="navConfig" onclick="App.showView('config')"><span class="ic">⚙️</span>Config</button>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.2/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   BASE DE DATOS LOCAL
+   ============================================================ */
+const DB = {
+  KEYS:{PAQ:'ml_paquetes', CFG:'ml_config', MOV:'ml_movimientos', SEQ:'ml_seq'},
+  read(key, fallback){ try{ const v = localStorage.getItem(key); return v? JSON.parse(v): fallback; }catch(e){ return fallback; } },
+  write(key, val){ localStorage.setItem(key, JSON.stringify(val)); },
+  nextId(){
+    let seq = this.read(this.KEYS.SEQ, 0) + 1;
+    this.write(this.KEYS.SEQ, seq);
+    return seq;
+  },
+  getPaquetes(){ return this.read(this.KEYS.PAQ, []); },
+  savePaquetes(arr){ this.write(this.KEYS.PAQ, arr); },
+  getConfig(){
+    return this.read(this.KEYS.CFG, {
+      moneda:'Bs', precio_base:3.00, dias_gratis:5, recargo_diario:0.50
+    });
+  },
+  saveConfig(cfg){ this.write(this.KEYS.CFG, cfg); },
+  logMovimiento(paquete_id, accion, detalle){
+    const mov = this.read(this.KEYS.MOV, []);
+    mov.push({id:this.nextId(), paquete_id, accion, fecha:new Date().toISOString(), detalle:detalle||''});
+    this.write(this.KEYS.MOV, mov);
+  }
+};
+
+/* ============================================================
+   UTILIDADES
+   ============================================================ */
+function fmtMoney(n, cfg){ cfg = cfg || DB.getConfig(); return (cfg.moneda||'Bs') + ' ' + (Math.round(n*100)/100).toFixed(2); }
+function pad2(n){ return n<10? '0'+n : ''+n; }
+function fmtDate(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return pad2(d.getDate())+'/'+pad2(d.getMonth()+1)+'/'+d.getFullYear()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+}
+function daysBetween(iso, ref){
+  const a = new Date(iso); const b = ref? new Date(ref): new Date();
+  return Math.floor((b - a) / 86400000);
+}
+function toast(msg){
+  const t = document.createElement('div');
+  t.className='toast'; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2400);
+}
+
+function normalizeCodigo(raw){
+  if(!raw) return '';
+  let c = raw.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const m = c.match(/^([A-Z])([A-Z0-9]+)$/);
+  if(!m) return c;
+  const letter = m[1];
+  let digits = m[2];
+  const map = {O:'0', Q:'0', D:'0', I:'1', L:'1', Z:'2', S:'5', B:'8', G:'9', A:'4', E:'3', H:'4'};
+  digits = digits.split('').map(ch => /[0-9]/.test(ch)? ch : (map[ch]!==undefined? map[ch] : ch)).join('');
+  return letter + digits;
+}
+function esCodigoValido(c){ return /^[A-Z]\d{1,4}$/.test(c); }
+
+function calcDeuda(paquete, cfg, refDate){
+  cfg = cfg || DB.getConfig();
+  const dias = Math.max(0, daysBetween(paquete.fecha_ingreso, refDate));
+  let deuda = Number(cfg.precio_base);
+  if(dias > Number(cfg.dias_gratis)){
+    const extra = dias - Number(cfg.dias_gratis);
+    deuda += extra * Number(cfg.recargo_diario);
+  }
+  return Math.round(deuda*100)/100;
+}
+
+/* ============================================================
+   PARSER DEL TICKET MEJORADO (con corrección OCR para A6, A49, etc.)
+   ============================================================ */
+const KEYWORDS_DETALLE = ['FRAGIL','FRÁGIL','ROPA','VAJILLA','JUGUETES','ELECTRONICOS','ELECTRÓNICOS','CABLES','DELICADO','ZAPATOS','LIBROS','ALIMENTOS','DOCUMENTOS'];
+const KEYWORDS_TIENDA = ['MEDIA LUNA','MEDIALUNA'];
+
+function parseTicketData(rawText){
+  const lines = rawText.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  const fullText = rawText.toUpperCase();
+
+  let codigo = null, cliente_nombre = null, cliente_celular = null, detalle = null, fecha_ticket = null, tienda = null;
+
+  // --- CODIGO: búsqueda inteligente con corrección OCR ---
+  let codigoLineIdx = -1;
+  for(let i=0;i<lines.length;i++){
+    const candidate = normalizeCodigo(lines[i]);
+    if(esCodigoValido(candidate)){
+      codigo = candidate; codigoLineIdx = i; break;
+    }
+  }
+  // fallback: buscar patrón dentro de todo el texto
+  if(!codigo){
+    const m = fullText.match(/\b([A-Z])\s*[-\s]?\s*(\d{1,4})\b/);
+    if(m){ const cand = normalizeCodigo(m[1]+m[2]); if(esCodigoValido(cand)) codigo = cand; }
+  }
+  // fallback 2: buscar cualquier combinación letra+número en líneas cortas
+  if(!codigo){
+    for(const line of lines){
+      const clean = line.replace(/[^A-Z0-9]/g,'');
+      if(clean.length >= 2 && clean.length <= 5 && /^[A-Z]/.test(clean)){
+        const cand = normalizeCodigo(clean);
+        if(esCodigoValido(cand)){ codigo = cand; break; }
+      }
+    }
+  }
+
+  // --- FECHA ---
+  const fechaMatch = rawText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})(\s+\d{1,2}:\d{2})?\b/);
+  if(fechaMatch) fecha_ticket = fechaMatch[1] + (fechaMatch[2]||'');
+
+  // --- TIENDA ---
+  for(const kw of KEYWORDS_TIENDA){ if(fullText.includes(kw)){ tienda='MEDIA LUNA'; break; } }
+
+  // --- DETALLE ---
+  const detalleLabel = rawText.match(/detalle\s*:?\s*([A-Za-zÁÉÍÓÚÑáéíóúñ ]{3,30})/i);
+  if(detalleLabel){ detalle = detalleLabel[1].trim(); }
+  else{
+    for(const kw of KEYWORDS_DETALLE){ if(fullText.includes(kw)){ detalle = kw; break; } }
+  }
+
+  // --- CELULAR ---
+  const celMatch = rawText.replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g,'').match(/\b\d{7,10}\b/);
+  if(celMatch) cliente_celular = celMatch[0];
+
+  // --- NOMBRE: línea siguiente al código que no sea ruido ---
+  const isNoise = (line) => {
+    const up = line.toUpperCase();
+    if(/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(line)) return true;
+    if(KEYWORDS_TIENDA.some(kw=>up.includes(kw))) return true;
+    if(/^DETALLE/i.test(line)) return true;
+    if(/^\d{7,10}$/.test(line.replace(/\s/g,''))) return true;
+    if(esCodigoValido(normalizeCodigo(line))) return true;
+    return false;
+  };
+  for(let i = (codigoLineIdx>=0? codigoLineIdx+1 : 0); i<lines.length; i++){
+    if(!isNoise(lines[i]) && /[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}/.test(lines[i])){
+      let nombre = lines[i].replace(/\s+/g,' ').trim();
+      nombre = nombre.split(' ').map(w => w.length? w[0].toUpperCase()+w.slice(1).toLowerCase() : w).join(' ');
+      cliente_nombre = nombre;
+      break;
+    }
+  }
+  // fallback: si no hay nombre, buscar cualquier línea con solo letras
+  if(!cliente_nombre){
+    for(const line of lines){
+      if(/^[A-Za-zÁÉÍÓÚÑáéíóúñ\s]{3,}$/.test(line) && !isNoise(line)){
+        cliente_nombre = line.trim();
+        break;
+      }
+    }
+  }
+
+  return {codigo, cliente_nombre, cliente_celular, detalle, fecha_ticket, tienda};
+}
+
+/* ============================================================
+   APP PRINCIPAL
+   ============================================================ */
+window.App = {
+  currentView: 'scanner',
+  scanMode: 'registro',
+  scanType: 'ocr',
+  filter: 'todos',
+  camStream: null,
+  currentDeviceId: null,
+  availableCameras: [],
+  ocrWorker: null,
+  ocrTimer: null,
+  ocrBusy: false,
+  qrScanner: null,
+
+  init(){
+    // Cargar configuración
+    const cfg = DB.getConfig();
+    document.getElementById('cfgMoneda').value = cfg.moneda;
+    document.getElementById('cfgPrecioBase').value = cfg.precio_base;
+    document.getElementById('cfgDiasGratis').value = cfg.dias_gratis;
+    document.getElementById('cfgRecargo').value = cfg.recargo_diario;
+    this.renderPaquetes();
+    this.renderPublicSearch();
+    this.updateHeaderStats();
+    this.showView('scanner');
+  },
+
+  /* ---------- Navegación ---------- */
+  showView(name){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+name).classList.add('active');
+    ['navScanner','navPaquetes','navConsulta','navConfig'].forEach(id=>document.getElementById(id).classList.remove('active'));
+    const map = {scanner:'navScanner', paquetes:'navPaquetes', consulta:'navConsulta', config:'navConfig'};
+    if(map[name]) document.getElementById(map[name]).classList.add('active');
+    this.currentView = name;
+    if(name !== 'scanner') this.stopCamera();
+    if(name === 'paquetes') this.renderPaquetes();
+  },
+
+  /* ---------- Selectores del escáner ---------- */
+  setScanMode(m){
+    this.scanMode = m;
+    document.getElementById('modeRegistro').classList.toggle('active', m==='registro');
+    document.getElementById('modeConsulta').classList.toggle('active', m==='consulta');
+    document.getElementById('scanResultBox').innerHTML='';
+  },
+  setScanType(t){
+    if(this.camStream || this.qrScanner) this.stopCamera();
+    this.scanType = t;
+    document.getElementById('typeOcr').classList.toggle('active', t==='ocr');
+    document.getElementById('typeQr').classList.toggle('active', t==='qr');
+    document.getElementById('scanResultBox').innerHTML='';
+  },
+
+  /* ---------- Cámara: OCR ---------- */
+  async startCamera(){
+    document.getElementById('scanResultBox').innerHTML = '';
+    if(this.scanType === 'qr'){ return this.startQr(); }
+
+    try{
+      const constraints = this.currentDeviceId
+        ? {video:{deviceId:{exact:this.currentDeviceId}}}
+        : {video:{facingMode:{ideal:'environment'}}};
+      this.camStream = await navigator.mediaDevices.getUserMedia(constraints);
+    }catch(e){
+      toast('❌ No se pudo acceder a la cámara: '+e.message);
+      return;
+    }
+    const video = document.getElementById('video');
+    video.srcObject = this.camStream;
+    video.style.display='block';
+    document.getElementById('camPlaceholder').style.display='none';
+    document.getElementById('camGuide').style.display='block';
+    await video.play();
+
+    document.getElementById('btnStartCam').style.display='none';
+    document.getElementById('btnStopCam').style.display='inline-flex';
+
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      this.availableCameras = devices.filter(d=>d.kind==='videoinput');
+      document.getElementById('btnSwitchCam').style.display = this.availableCameras.length>1 ? 'inline-flex' : 'none';
+    }catch(e){}
+
+    this.setCamStatus('🔎 Escaneando ticket...', true);
+    this.startOcrLoop();
+  },
+  async switchCamera(){
+    if(!this.availableCameras.length) return;
+    const idx = this.availableCameras.findIndex(d=>d.deviceId===this.currentDeviceId);
+    const next = this.availableCameras[(idx+1) % this.availableCameras.length];
+    this.currentDeviceId = next.deviceId;
+    this.stopCamera(true);
+    await this.startCamera();
+  },
+  stopCamera(keepResult){
+    if(this.camStream){ this.camStream.getTracks().forEach(t=>t.stop()); this.camStream=null; }
+    if(this.ocrTimer){ clearInterval(this.ocrTimer); this.ocrTimer=null; }
+    if(this.qrScanner){
+      this.qrScanner.stop().then(()=>{ try{this.qrScanner.clear();}catch(e){} }).catch(()=>{});
+      this.qrScanner = null;
+    }
+    const video = document.getElementById('video');
+    video.style.display='none'; video.srcObject=null;
+    document.getElementById('qr-reader').style.display='none';
+    document.getElementById('qr-reader').innerHTML='';
+    document.getElementById('camPlaceholder').style.display='block';
+    document.getElementById('camGuide').style.display='none';
+    document.getElementById('btnStartCam').style.display='inline-flex';
+    document.getElementById('btnStopCam').style.display='none';
+    document.getElementById('btnSwitchCam').style.display='none';
+    this.setCamStatus('', false);
+    if(!keepResult) document.getElementById('scanResultBox').innerHTML='';
+  },
+  setCamStatus(msg, show){
+    const el = document.getElementById('camStatus');
+    el.textContent = msg;
+    el.classList.toggle('show', !!show);
+  },
+
+  async getOcrWorker(){
+    if(!this.ocrWorker){
+      this.setCamStatus('⏳ Cargando motor OCR...', true);
+      this.ocrWorker = await Tesseract.createWorker('spa');
+    }
+    return this.ocrWorker;
+  },
+
+  startOcrLoop(){
+    if(this.ocrTimer) clearInterval(this.ocrTimer);
+    this.ocrTimer = setInterval(()=>{ this.runOcrFrame(); }, 1200);
+  },
+
+  preprocessFrame(video){
+    const canvas = document.getElementById('ocrCanvas');
+    const maxW = 900;
+    const scale = Math.min(2, maxW / video.videoWidth) || 1;
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+    const d = imgData.data;
+    for(let i=0;i<d.length;i+=4){
+      let gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      gray = (gray - 128) * 1.35 + 128;
+      gray = Math.max(0, Math.min(255, gray));
+      d[i]=d[i+1]=d[i+2]=gray;
+    }
+    ctx.putImageData(imgData,0,0);
+    return canvas;
+  },
+
+  async runOcrFrame(){
+    if(this.ocrBusy || !this.camStream) return;
+    const video = document.getElementById('video');
+    if(video.videoWidth === 0) return;
+    this.ocrBusy = true;
+    this.setCamStatus('🔎 Leyendo ticket...', true);
+    try{
+      const canvas = this.preprocessFrame(video);
+      const worker = await this.getOcrWorker();
+      const { data } = await worker.recognize(canvas);
+      const parsed = parseTicketData(data.text || '');
+      if(parsed.codigo && parsed.cliente_nombre){
+        clearInterval(this.ocrTimer); this.ocrTimer=null;
+        this.setCamStatus('✅ Ticket leído', true);
+        this.handleParsedResult(parsed);
+      }else{
+        this.setCamStatus('🔎 Escaneando...', true);
+      }
+    }catch(e){
+      this.setCamStatus('⚠️ Error, acerca la cámara', true);
+    }finally{
+      this.ocrBusy = false;
+    }
+  },
+
+  async handleFileUpload(evt){
+    const file = evt.target.files[0];
+    if(!file) return;
+    if(this.scanType !== 'ocr'){ toast('Cambia a modo OCR'); return; }
+    this.setCamStatus('🔎 Leyendo imagen...', true);
+    document.getElementById('camPlaceholder').style.display='none';
+    try{
+      const img = await createImageBitmap(file);
+      const canvas = document.getElementById('ocrCanvas');
+      const maxW = 1100;
+      const scale = Math.min(2, maxW/img.width) || 1;
+      canvas.width = img.width*scale; canvas.height = img.height*scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+      const d = imgData.data;
+      for(let i=0;i<d.length;i+=4){
+        let gray=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+        gray=(gray-128)*1.35+128; gray=Math.max(0,Math.min(255,gray));
+        d[i]=d[i+1]=d[i+2]=gray;
+      }
+      ctx.putImageData(imgData,0,0);
+      const worker = await this.getOcrWorker();
+      const { data } = await worker.recognize(canvas);
+      const parsed = parseTicketData(data.text || '');
+      this.setCamStatus('', false);
+      if(parsed.codigo && parsed.cliente_nombre){
+        this.handleParsedResult(parsed);
+      }else{
+        toast('No se detectó código y nombre. Intenta con una foto más clara.');
+      }
+    }catch(e){
+      toast('Error: '+e.message);
+    }
+    evt.target.value = '';
+  },
+
+  /* ---------- Cámara: QR ---------- */
+  async startQr(){
+    document.getElementById('video').style.display='none';
+    document.getElementById('qr-reader').style.display='block';
+    document.getElementById('camPlaceholder').style.display='none';
+    document.getElementById('btnStartCam').style.display='none';
+    document.getElementById('btnStopCam').style.display='inline-flex';
+    this.setCamStatus('🔎 Apunta al QR...', true);
+    this.qrScanner = new Html5Qrcode('qr-reader');
+    try{
+      await this.qrScanner.start(
+        {facingMode:'environment'},
+        {fps:10, qrbox:230},
+        (decodedText)=>{ this.onQrSuccess(decodedText); },
+        ()=>{}
+      );
+    }catch(e){
+      toast('Error al iniciar QR: '+e.message);
+      this.stopCamera();
+    }
+  },
+  onQrSuccess(text){
+    if(this.ocrBusy) return;
+    this.ocrBusy = true;
+    this.setCamStatus('✅ QR leído', true);
+    if(this.qrScanner){ this.qrScanner.pause(true); }
+    setTimeout(()=>{ this.ocrBusy=false; }, 1500);
+
+    if(text.includes('|')){
+      const parts = text.split('|');
+      const parsed = {
+        codigo: normalizeCodigo(parts[0]||''),
+        cliente_nombre: (parts[1]||'').trim(),
+        cliente_celular: (parts[2]||'').trim() || null,
+        detalle: (parts[3]||'').trim() || null,
+        fecha_ticket: (parts[4]||'').trim() || null,
+        tienda: (parts[5]||'').trim() || null
+      };
+      if(!esCodigoValido(parsed.codigo) || !parsed.cliente_nombre){
+        toast('QR no contiene datos válidos.');
+        if(this.qrScanner) this.qrScanner.resume();
+        return;
+      }
+      this.handleParsedResult(parsed);
+    }else{
+      const paquetes = DB.getPaquetes();
+      const pkg = paquetes.find(p=>p.qr_token === text);
+      if(pkg){
+        this.showExistingPackage(pkg);
+      }else{
+        toast('QR no reconocido.');
+        if(this.qrScanner) this.qrScanner.resume();
+      }
+    }
+  },
+
+  /* ---------- Flujo tras el escaneo ---------- */
+  handleParsedResult(parsed){
+    if(this.scanMode === 'consulta'){
+      const paquetes = DB.getPaquetes();
+      const existentes = paquetes.filter(p=>p.codigo===parsed.codigo);
+      const box = document.getElementById('scanResultBox');
+      if(existentes.length===0){
+        box.innerHTML = '<div class="panel warn">No se encontró ningún paquete con código <b>'+parsed.codigo+'</b>.</div>';
+        return;
+      }
+      box.innerHTML = '<div class="scan-result"><h3>📦 Resultados para '+parsed.codigo+'</h3></div>';
+      existentes.sort((a,b)=>b.fecha_ingreso.localeCompare(a.fecha_ingreso)).forEach(p=>{
+        document.getElementById('scanResultBox').innerHTML += this.pkgCardHtml(p, true);
+      });
+      return;
+    }
+
+    // MODO REGISTRO
+    const pendiente = DB.getPaquetes().find(p=>p.codigo===parsed.codigo && p.estado==='pendiente');
+    if(pendiente){
+      this.showExistingPackage(pendiente);
+    }else{
+      this.showRegistrationForm(parsed);
+    }
+  },
+
+  showExistingPackage(pkg){
+    const cfg = DB.getConfig();
+    const deuda = calcDeuda(pkg, cfg);
+    const box = document.getElementById('scanResultBox');
+    box.innerHTML = `
+      <div class="panel warn">
+        <b style="color:var(--warn);">⚠️ PAQUETE YA REGISTRADO</b>
+        <div style="margin-top:10px;"><span class="code-badge">${pkg.codigo}</span></div>
+        <p style="margin:10px 0 2px;font-size:15px;font-weight:600;">${pkg.cliente_nombre}</p>
+        <p class="hint" style="margin:2px 0;">Estado: ${pkg.estado} · Ingreso: ${fmtDate(pkg.fecha_ingreso)}</p>
+        <p class="hint" style="margin:2px 0 10px;">Deuda: <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b></p>
+        <div class="btn-row">
+          ${pkg.estado==='pendiente' ? '<button class="btn btn-success" onclick="App.confirmarEntrega('+pkg.id+')">✅ Entregar</button>' : ''}
+          <button class="btn btn-outline" onclick="App.openEditForm('+pkg.id+')">✏️ Editar</button>
+        </div>
+      </div>`;
+  },
+
+  showRegistrationForm(parsed){
+    const box = document.getElementById('scanResultBox');
+    box.innerHTML = `
+      <div class="panel success scan-result">
+        <h3>📦 Nuevo paquete detectado</h3>
+        <div style="margin-bottom:12px;"><span class="code-badge">${parsed.codigo}</span></div>
+        <div class="field"><label>👤 Nombre del cliente</label><input id="frmNombre" value="${(parsed.cliente_nombre||'').replace(/"/g,'')}"></div>
+        <div class="row2">
+          <div class="field"><label>📱 Celular</label><input id="frmCelular" value="${parsed.cliente_celular||''}"></div>
+          <div class="field"><label>📦 Detalle</label><input id="frmDetalle" value="${parsed.detalle||''}"></div>
+        </div>
+        <div class="field"><label>👤 Quién dejó</label><input id="frmQuienDejo" placeholder="Opcional"></div>
+        <input type="hidden" id="frmCodigo" value="${parsed.codigo}">
+        <button class="btn btn-primary" onclick="App.guardarPaqueteDesdeForm()">💾 Guardar paquete</button>
+        <button class="btn btn-outline" onclick="App.limpiarResultado()">🗑️ Cancelar</button>
+      </div>`;
+  },
+
+  limpiarResultado(){
+    document.getElementById('scanResultBox').innerHTML = '';
+  },
+
+  guardarPaqueteDesdeForm(){
+    const codigo = document.getElementById('frmCodigo').value;
+    const nombre = document.getElementById('frmNombre').value.trim();
+    if(!nombre){ toast('El nombre es obligatorio'); return; }
+    const yaExiste = DB.getPaquetes().find(p=>p.codigo===codigo && p.estado==='pendiente');
+    if(yaExiste){ toast('Ya existe un paquete pendiente con este código.'); this.showExistingPackage(yaExiste); return; }
+
+    const paquetes = DB.getPaquetes();
+    const cfg = DB.getConfig();
+    const nuevo = {
+      id: DB.nextId(),
+      codigo,
+      cliente_nombre: nombre,
+      cliente_celular: document.getElementById('frmCelular').value.trim() || null,
+      detalle: document.getElementById('frmDetalle').value.trim() || null,
+      quien_dejo: document.getElementById('frmQuienDejo').value.trim() || null,
+      fecha_ticket: null,
+      fecha_ingreso: new Date().toISOString(),
+      fecha_entrega: null,
+      precio_base: cfg.precio_base,
+      deuda_final: null,
+      monto_pagado: null,
+      estado: 'pendiente',
+      tienda: 'MEDIA LUNA',
+      qr_token: 'PKG-' + Math.random().toString(36).slice(2,10).toUpperCase()
+    };
+    paquetes.push(nuevo);
+    DB.savePaquetes(paquetes);
+    DB.logMovimiento(nuevo.id, 'REGISTRO', 'Registrado vía escáner');
+    toast('✅ Paquete registrado');
+    document.getElementById('scanResultBox').innerHTML = '<div class="panel success">✅ Paquete <b>'+codigo+'</b> registrado para <b>'+nombre+'</b>.</div>';
+    this.renderPaquetes();
+    this.updateHeaderStats();
+  },
+
+  /* ---------- Registro manual ---------- */
+  openManualForm(){
+    const html = `
+      <h3>📦 Registrar paquete manualmente</h3>
+      <div class="field"><label>Código</label><input id="mCodigo" placeholder="Ej: A6, A49"></div>
+      <div class="field"><label>Nombre del cliente</label><input id="mNombre"></div>
+      <div class="row2">
+        <div class="field"><label>Celular</label><input id="mCelular"></div>
+        <div class="field"><label>Detalle</label><input id="mDetalle"></div>
+      </div>
+      <div class="field"><label>Quién dejó</label><input id="mQuienDejo" placeholder="Opcional"></div>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="App.closeModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="App.guardarManual()">💾 Guardar</button>
+      </div>`;
+    this.openModal(html);
+  },
+  guardarManual(){
+    const codigo = normalizeCodigo(document.getElementById('mCodigo').value);
+    const nombre = document.getElementById('mNombre').value.trim();
+    if(!esCodigoValido(codigo)){ toast('Código inválido. Ej: A6, A49'); return; }
+    if(!nombre){ toast('El nombre es obligatorio'); return; }
+    const pendiente = DB.getPaquetes().find(p=>p.codigo===codigo && p.estado==='pendiente');
+    if(pendiente){ this.closeModal(); toast('Ya existe un paquete pendiente con ese código'); this.showExistingPackage(pendiente); return; }
+    const paquetes = DB.getPaquetes();
+    const cfg = DB.getConfig();
+    const nuevo = {
+      id: DB.nextId(), codigo, cliente_nombre: nombre,
+      cliente_celular: document.getElementById('mCelular').value.trim()||null,
+      detalle: document.getElementById('mDetalle').value.trim()||null,
+      quien_dejo: document.getElementById('mQuienDejo').value.trim()||null,
+      fecha_ticket:null, fecha_ingreso:new Date().toISOString(), fecha_entrega:null,
+      precio_base: cfg.precio_base, deuda_final:null, monto_pagado:null,
+      estado:'pendiente', tienda:'MEDIA LUNA',
+      qr_token:'PKG-'+Math.random().toString(36).slice(2,10).toUpperCase()
+    };
+    paquetes.push(nuevo);
+    DB.savePaquetes(paquetes);
+    DB.logMovimiento(nuevo.id,'REGISTRO','Registrado manualmente');
+    this.closeModal();
+    toast('✅ Paquete registrado');
+    this.renderPaquetes();
+    this.updateHeaderStats();
+  },
+
+  /* ---------- Lista de paquetes ---------- */
+  setFilter(f){
+    this.filter = f;
+    document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', c.dataset.f===f));
+    this.renderPaquetes();
+  },
+  renderPaquetes(){
+    const cfg = DB.getConfig();
+    let paquetes = DB.getPaquetes();
+    const q = (document.getElementById('searchBox')?.value||'').trim().toLowerCase();
+
+    const total = paquetes.length;
+    const pend = paquetes.filter(p=>p.estado==='pendiente').length;
+    const deudaTotal = paquetes.filter(p=>p.estado==='pendiente').reduce((s,p)=>s+calcDeuda(p,cfg),0);
+    document.getElementById('statRow').innerHTML = `
+      <div class="stat"><b>${total}</b><span>Total</span></div>
+      <div class="stat"><b>${pend}</b><span>Pendientes</span></div>
+      <div class="stat"><b>${fmtMoney(deudaTotal,cfg)}</b><span>Deuda total</span></div>`;
+
+    if(this.filter!=='todos') paquetes = paquetes.filter(p=>p.estado===this.filter);
+    if(q){
+      paquetes = paquetes.filter(p =>
+        p.codigo.toLowerCase().includes(q) ||
+        p.cliente_nombre.toLowerCase().includes(q) ||
+        (p.cliente_celular||'').includes(q)
+      );
+    }
+    paquetes.sort((a,b)=> b.fecha_ingreso.localeCompare(a.fecha_ingreso));
+
+    const list = document.getElementById('pkgList');
+    if(paquetes.length===0){ list.innerHTML = '<div class="empty-state">📭 No hay paquetes que coincidan.</div>'; return; }
+    list.innerHTML = paquetes.map(p=>this.pkgCardHtml(p,false)).join('');
+  },
+
+  pkgCardHtml(p, readOnly){
+    const cfg = DB.getConfig();
+    const dias = daysBetween(p.fecha_ingreso);
+    const deuda = p.estado==='entregado' ? p.deuda_final : calcDeuda(p,cfg);
+    let badgeClass = p.estado;
+    let diasBadge = '';
+    if(p.estado==='pendiente'){
+      if(dias>10) diasBadge = '<span class="badge alerta">⏰ '+dias+' días</span>';
+      else if(dias>5) diasBadge = '<span class="badge" style="background:#fff3cd;color:#856404;">'+dias+' días</span>';
+      else diasBadge = '<span class="badge" style="background:var(--surface-2);color:var(--muted)">'+dias+' días</span>';
+    }
+    const actions = readOnly ? '' : `
+      <div class="pkg-actions">
+        ${p.estado==='pendiente' ? '<button class="entregar" onclick="App.confirmarEntrega('+p.id+')">✅ Entregar</button>' : ''}
+        <button onclick="App.openEditForm('+p.id+')">✏️ Editar</button>
+        ${p.cliente_celular ? '<button class="wa" onclick="App.enviarWhatsapp('+p.id+')">💬 WhatsApp</button>' : ''}
+        <button onclick="App.verQr('+p.id+')">📱 QR</button>
+        <button class="eliminar" onclick="App.eliminarPaquete('+p.id+')">🗑️ Eliminar</button>
+      </div>`;
+    return `
+      <div class="pkg-card">
+        <div class="pkg-top">
+          <div>
+            <span class="pkg-code">${p.codigo}</span>
+            <div class="pkg-name">${p.cliente_nombre}</div>
+          </div>
+          <span class="badge ${badgeClass}">${p.estado}</span>
+        </div>
+        <div class="pkg-meta">
+          ${p.detalle? '📦 '+p.detalle+' · ' : ''}📅 ${fmtDate(p.fecha_ingreso)} ${diasBadge}<br>
+          💰 <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b>${p.cliente_celular? ' · 📱 '+p.cliente_celular : ''}
+        </div>
+        ${actions}
+      </div>`;
+  },
+
+  /* ---------- Consulta pública ---------- */
+  renderPublicSearch(){
+    const q = (document.getElementById('publicSearchBox')?.value||'').trim().toLowerCase();
+    const box = document.getElementById('publicResultList');
+    if(!q){ box.innerHTML = '<div class="empty-state">🔍 Escribe un código o nombre para buscar tu paquete.</div>'; return; }
+    const cfg = DB.getConfig();
+    const paquetes = DB.getPaquetes().filter(p =>
+      p.codigo.toLowerCase().includes(q) || p.cliente_nombre.toLowerCase().includes(q)
+    );
+    if(paquetes.length===0){ box.innerHTML = '<div class="empty-state">📭 No se encontraron paquetes.</div>'; return; }
+    box.innerHTML = paquetes.map(p=>{
+      const deuda = p.estado==='entregado'? p.deuda_final : calcDeuda(p,cfg);
+      return `<div class="pkg-card">
+        <div class="pkg-top">
+          <div><span class="pkg-code">${p.codigo}</span><div class="pkg-name">${p.cliente_nombre}</div></div>
+          <span class="badge ${p.estado}">${p.estado}</span>
+        </div>
+        <div class="pkg-meta">📅 Ingreso: ${fmtDate(p.fecha_ingreso)}<br>💰 Deuda: <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b></div>
+      </div>`;
+    }).join('');
+  },
+
+  /* ---------- Editar / Entregar / Eliminar ---------- */
+  openEditForm(id){
+    const p = DB.getPaquetes().find(x=>x.id===id);
+    if(!p) return;
+    const html = `
+      <h3>✏️ Editar paquete ${p.codigo}</h3>
+      <div class="field"><label>Nombre</label><input id="eNombre" value="${p.cliente_nombre}"></div>
+      <div class="row2">
+        <div class="field"><label>Celular</label><input id="eCelular" value="${p.cliente_celular||''}"></div>
+        <div class="field"><label>Detalle</label><input id="eDetalle" value="${p.detalle||''}"></div>
+      </div>
+      <div class="field"><label>Quién dejó</label><input id="eQuienDejo" value="${p.quien_dejo||''}"></div>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="App.closeModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="App.guardarEdicion(${p.id})">💾 Guardar</button>
+      </div>`;
+    this.openModal(html);
+  },
+  guardarEdicion(id){
+    const paquetes = DB.getPaquetes();
+    const p = paquetes.find(x=>x.id===id);
+    if(!p) return;
+    p.cliente_nombre = document.getElementById('eNombre').value.trim() || p.cliente_nombre;
+    p.cliente_celular = document.getElementById('eCelular').value.trim() || null;
+    p.quien_dejo = document.getElementById('eQuienDejo').value.trim() || null;
+    p.detalle = document.getElementById('eDetalle').value.trim() || null;
+    p.updated_at = new Date().toISOString();
+    DB.savePaquetes(paquetes);
+    DB.logMovimiento(id,'EDICION','Datos actualizados');
+    this.closeModal();
+    toast('✅ Paquete actualizado');
+    this.renderPaquetes();
+    this.updateHeaderStats();
+  },
+  confirmarEntrega(id){
+    const p = DB.getPaquetes().find(x=>x.id===id);
+    if(!p || p.estado!=='pendiente') return;
+    const cfg = DB.getConfig();
+    const deuda = calcDeuda(p,cfg);
+    const html = `
+      <h3>✅ Confirmar entrega</h3>
+      <p class="hint">Código: <b style="color:var(--text)">${p.codigo}</b><br>Cliente: <b style="color:var(--text)">${p.cliente_nombre}</b><br>Deuda: <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b></p>
+      <div class="field"><label>Monto pagado</label><input id="montoPagado" type="number" step="0.5" value="${deuda}"></div>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="App.closeModal()">Cancelar</button>
+        <button class="btn btn-success" onclick="App.entregarPaquete(${p.id})">✅ Confirmar</button>
+      </div>`;
+    this.openModal(html);
+  },
+  entregarPaquete(id){
+    const paquetes = DB.getPaquetes();
+    const p = paquetes.find(x=>x.id===id);
+    if(!p || p.estado!=='pendiente'){ toast('Este paquete ya fue entregado.'); this.closeModal(); this.renderPaquetes(); return; }
+    const cfg = DB.getConfig();
+    const deuda = calcDeuda(p,cfg);
+    const monto = parseFloat(document.getElementById('montoPagado').value) || deuda;
+    p.estado = 'entregado';
+    p.fecha_entrega = new Date().toISOString();
+    p.deuda_final = deuda;
+    p.monto_pagado = monto;
+    DB.savePaquetes(paquetes);
+    DB.logMovimiento(id,'ENTREGA','Monto pagado: '+monto);
+    this.closeModal();
+    toast('✅ Paquete entregado');
+    this.renderPaquetes();
+    this.updateHeaderStats();
+    document.getElementById('scanResultBox').innerHTML = '<div class="panel success">✅ Paquete <b>'+p.codigo+'</b> entregado.</div>';
+  },
+  eliminarPaquete(id){
+    const p = DB.getPaquetes().find(x=>x.id===id);
+    if(!p) return;
+    const html = `
+      <h3>🗑️ Eliminar paquete</h3>
+      <p class="hint">¿Eliminar <b style="color:var(--text)">${p.codigo} — ${p.cliente_nombre}</b>? Esta acción no se puede deshacer.</p>
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="App.closeModal()">Cancelar</button>
+        <button class="btn btn-danger" onclick="App.confirmarEliminar(${p.id})">🗑️ Eliminar</button>
+      </div>`;
+    this.openModal(html);
+  },
+  confirmarEliminar(id){
+    let paquetes = DB.getPaquetes();
+    paquetes = paquetes.filter(p=>p.id!==id);
+    DB.savePaquetes(paquetes);
+    DB.logMovimiento(id,'ELIMINACION','Paquete eliminado');
+    this.closeModal();
+    toast('Paquete eliminado');
+    this.renderPaquetes();
+    this.updateHeaderStats();
+  },
+
+  /* ---------- WhatsApp ---------- */
+  enviarWhatsapp(id){
+    const p = DB.getPaquetes().find(x=>x.id===id);
+    if(!p || !p.cliente_celular) return;
+    const cfg = DB.getConfig();
+    const deuda = calcDeuda(p,cfg);
+    const primerNombre = p.cliente_nombre.split(' ')[0];
+    let numero = p.cliente_celular.replace(/\D/g,'');
+    if(numero.length===8) numero = '591'+numero;
+    const mensaje = p.estado==='pendiente'
+      ? `Hola ${primerNombre} 👋\n\n📦 Tienes un paquete pendiente en MEDIA LUNA.\nCódigo: ${p.codigo}\n💰 Deuda: ${fmtMoney(deuda,cfg)}\n\n📍 Te esperamos.`
+      : `Hola ${primerNombre} 👋\n\n✅ Tu paquete (${p.codigo}) ya fue entregado. ¡Gracias por confiar en MEDIA LUNA!`;
+    window.open('https://wa.me/'+numero+'?text='+encodeURIComponent(mensaje), '_blank');
+  },
+
+  /* ---------- QR de un paquete ---------- */
+  verQr(id){
+    const p = DB.getPaquetes().find(x=>x.id===id);
+    if(!p) return;
+    const html = `
+      <h3>📱 QR del paquete ${p.codigo}</h3>
+      <p class="hint">Token único para este paquete (incluso si el código ${p.codigo} se reutiliza).</p>
+      <div class="panel quiet" style="text-align:center;word-break:break-all;font-family:monospace;color:var(--accent);padding:12px;">${p.qr_token}</div>
+      <button class="btn btn-outline" onclick="App.closeModal()">Cerrar</button>`;
+    this.openModal(html);
+  },
+
+  /* ---------- Config ---------- */
+  saveConfig(){
+    const cfg = {
+      moneda: document.getElementById('cfgMoneda').value.trim() || 'Bs',
+      precio_base: parseFloat(document.getElementById('cfgPrecioBase').value) || 0,
+      dias_gratis: parseInt(document.getElementById('cfgDiasGratis').value) || 0,
+      recargo_diario: parseFloat(document.getElementById('cfgRecargo').value) || 0
+    };
+    DB.saveConfig(cfg);
+    toast('✅ Configuración guardada');
+    this.renderPaquetes();
+  },
+
+  updateHeaderStats(){
+    const pend = DB.getPaquetes().filter(p=>p.estado==='pendiente').length;
+    document.getElementById('headerStats').innerHTML = `<b>${pend}</b> pendientes`;
+  },
+
+  /* ---------- Modal ---------- */
+  openModal(innerHtml){
+    this.closeModal();
+    const backdrop = document.createElement('div');
+    backdrop.className='modal-backdrop';
+    backdrop.id='activeModal';
+    backdrop.onclick = (e)=>{ if(e.target===backdrop) this.closeModal(); };
+    const sheet = document.createElement('div');
+    sheet.className='modal-sheet';
+    sheet.innerHTML = innerHtml;
+    backdrop.appendChild(sheet);
+    document.body.appendChild(backdrop);
+  },
+  closeModal(){
+    const m = document.getElementById('activeModal');
+    if(m) m.remove();
+  }
+};
+
+document.addEventListener('DOMContentLoaded', ()=>App.init());
+})();
+</script>
+</body>
+</html>
