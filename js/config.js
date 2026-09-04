@@ -3,7 +3,6 @@
  */
 
 const Config = {
-    // Configuración por defecto
     DEFAULTS: {
         moneda: 'Bs',
         precio_base: 3.00,
@@ -12,20 +11,16 @@ const Config = {
         dias_mora: 15
     },
 
-    // Obtener configuración
     getConfig() {
         return DB.read('ml_config', this.DEFAULTS);
     },
 
-    // Guardar configuración
     saveConfig(cfg) {
-        // Asegurar que todos los campos existan
         const full = { ...this.DEFAULTS, ...cfg };
         DB.write('ml_config', full);
         return full;
     },
 
-    // Calcular deuda de un paquete
     calcularDeuda(paquete, cfg) {
         cfg = cfg || this.getConfig();
         if (paquete.estado === 'entregado' && paquete.deuda_final !== null) {
@@ -43,7 +38,6 @@ const Config = {
         return Math.round(deuda * 100) / 100;
     },
 
-    // Obtener estado de mora
     getEstadoMora(paquete, cfg) {
         cfg = cfg || this.getConfig();
         const dias = Math.max(0, daysBetween(paquete.fecha_ingreso));
@@ -56,7 +50,6 @@ const Config = {
         return 'vencido';
     },
 
-    // Obtener color según estado
     getColorEstado(estado) {
         const map = {
             'normal': '#28a745',
@@ -67,7 +60,6 @@ const Config = {
         return map[estado] || '#6c757d';
     },
 
-    // Obtener badge según estado
     getBadgeEstado(estado) {
         const map = {
             'normal': '<span class="badge" style="background:#d4edda;color:#155724;">✅ Normal</span>',
@@ -78,7 +70,6 @@ const Config = {
         return map[estado] || '';
     },
 
-    // Obtener resumen de deuda para mostrar en configuración
     getResumenDeuda() {
         const cfg = this.getConfig();
         const paquetes = DB.getPaquetes();

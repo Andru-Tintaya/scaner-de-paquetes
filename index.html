@@ -18,9 +18,7 @@
             <b>MEDIA LUNA</b>
             <span>Control de paquetería</span>
         </div>
-        <div class="stats-mini" id="headerStats">
-            <b>0</b> pendientes
-        </div>
+        <div class="stats-mini" id="headerStats"><b>0</b> pendientes</div>
     </header>
 
     <main>
@@ -55,7 +53,7 @@
 
             <div class="btn-row">
                 <button class="btn btn-primary" id="btnStartCam" onclick="App.startCamera()">📷 Iniciar cámara</button>
-                <button class="btn btn-success" id="btnCapture" onclick="App.capturarYEscannear()" style="display:none;">📸 Capturar y Escanear</button>
+                <button class="btn btn-success" id="btnCapture" onclick="App.capturarYEscanear()" style="display:none;">📸 Capturar y Escanear</button>
                 <button class="btn btn-outline" id="btnStopCam" onclick="App.stopCamera()" style="display:none;">⏹ Detener</button>
                 <button class="btn btn-outline" id="btnSwitchCam" onclick="App.switchCamera()" style="display:none;">🔄 Cambiar</button>
             </div>
@@ -130,18 +128,8 @@
             </div>
 
             <div class="panel quiet">
-                <h3 style="font-size:14px;margin:0 0 10px;">📊 Resumen de deuda</h3>
-                <div id="configResumenDeuda">
-                    <p class="hint">Precio base: <b>Bs 3.00</b></p>
-                    <p class="hint">Días gratis: <b>5</b></p>
-                    <p class="hint">Recargo diario: <b>Bs 0.50</b></p>
-                    <p class="hint">Mora máxima: <b>15 días</b></p>
-                </div>
-            </div>
-
-            <div class="panel quiet">
                 <b style="font-size:13px;">📌 Datos guardados localmente</b>
-                <p class="hint" style="margin-bottom:0;">Esta versión usa localStorage. Todos los datos se guardan en tu navegador.</p>
+                <p class="hint" style="margin-bottom:0;">Esta versión usa localStorage. Todos los datos se guardan en tu navegador. Cuando pasemos a Flask + MySQL esto se reemplaza por la base de datos real compartida entre empleados.</p>
             </div>
 
             <div class="panel danger">
@@ -170,7 +158,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.2/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 
-    <!-- Módulos -->
     <script src="js/utils.js"></script>
     <script src="js/database.js"></script>
     <script src="js/parser.js"></script>

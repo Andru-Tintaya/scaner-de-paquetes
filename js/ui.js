@@ -3,7 +3,6 @@
  */
 
 const UI = {
-    // -------- Modal --------
     openModal(innerHtml) {
         this.closeModal();
         const backdrop = document.createElement('div');
@@ -22,7 +21,6 @@ const UI = {
         if (m) m.remove();
     },
 
-    // -------- Toast --------
     toast(msg, type) {
         const t = document.createElement('div');
         t.className = 'toast';
@@ -33,8 +31,7 @@ const UI = {
         setTimeout(() => t.remove(), 2800);
     },
 
-    // -------- Tarjeta de paquete --------
-    renderPkgCard(p, readOnly, onAction) {
+    renderPkgCard(p, readOnly) {
         const cfg = Config.getConfig();
         const dias = daysBetween(p.fecha_ingreso);
         const deuda = p.estado === 'entregado' ? p.deuda_final : Config.calcularDeuda(p, cfg);
@@ -59,6 +56,9 @@ const UI = {
             (estadoMora === 'vencido' ? '🔴 VENCIDO' : '⏳ Pendiente') :
             '✅ Entregado';
 
+        // Usamos data-action/data-id + un solo listener delegado en app.js
+        // (evita construir "onclick" con el id incrustado a mano, que es
+        // la fuente típica de errores de sintaxis en el HTML generado).
         const actions = readOnly ? '' : `
             <div class="pkg-actions">
                 ${p.estado==='pendiente' ? '<button class="entregar" data-action="entregar" data-id="'+p.id+'">✅ Entregar</button>' : ''}
@@ -89,81 +89,6 @@ const UI = {
             </div>`;
     },
 
-    // -------- Mostrar resultado de escaneo --------
-    showScanResult(parsed, modo) {
-        const box = document.getElementById('scanResultBox');
-
-        if (modo === 'consulta') {
-            const paquetes = DB.buscarPaquetes(parsed.codigo);
-            if (paquetes.length === 0) {
-                box.innerHTML = '<div class="panel warn">No se encontró ningún paquete con código <b>' + parsed.codigo + '</b>.</div>';
-                return;
-            }
-            box.innerHTML = '<div class="scan-result"><h3>📦 Resultados para ' + parsed.codigo + '</h3></div>';
-            paquetes.sort((a, b) => b.fecha_ingreso.localeCompare(a.fecha_ingreso)).forEach(p => {
-                box.innerHTML += this.renderPkgCard(p, true);
-            });
-            return;
-        }
-
-        // MODO REGISTRO
-        const pendiente = DB.getPaquetes().find(p =>
-            p.codigo === parsed.codigo && p.estado === 'pendiente'
-        );
-
-        if (pendiente) {
-            box.innerHTML = `
-                <div class="panel warn">
-                    <b style="color:var(--warn);">⚠️ PAQUETE YA REGISTRADO</b>
-                    <div style="margin-top:10px;"><span class="code-badge">${pendiente.codigo}</span></div>
-                    <p style="margin:10px 0 2px;font-size:15px;font-weight:600;">${pendiente.cliente_nombre}</p>
-                    <p class="hint" style="margin:2px 0;">Estado: ${pendiente.estado} · Ingreso: ${fmtDate(pendiente.fecha_ingreso)}</p>
-                    <p class="hint" style="margin:2px 0 10px;">Deuda: <b style="color:var(--accent)">${fmtMoney(Config.calcularDeuda(pendiente), Config.getConfig())}</b></p>
-                    <div class="btn-row">
-                        ${pendiente.estado==='pendiente' ? '<button class="btn btn-success" onclick="App.confirmarEntrega('+pendiente.id+')">✅ Entregar</button>' : ''}
-                        <button class="btn btn-outline" onclick="App.openEditForm('+pendiente.id+')">✏️ Editar</button>
-                    </div>
-                </div>`;
-            return;
-        }
-
-        // Nuevo paquete
-        const fechaDisplay = parsed.fecha_ticket ?
-            `<div class="field"><label>📅 Fecha del ticket</label><input id="frmFechaTicket" value="${parsed.fecha_ticket}" readonly style="background:var(--surface-2);"></div>` :
-            '';
-
-        box.innerHTML = `
-            <div class="panel success scan-result">
-                <h3>📦 Nuevo paquete detectado</h3>
-                <div style="margin-bottom:12px;"><span class="code-badge">${parsed.codigo}</span></div>
-                <div class="field">
-                    <label>👤 Nombre del cliente</label>
-                    <input id="frmNombre" value="${(parsed.cliente_nombre||'').replace(/"/g,'')}">
-                </div>
-                <div class="row2">
-                    <div class="field">
-                        <label>📱 Celular</label>
-                        <input id="frmCelular" value="${parsed.cliente_celular||''}">
-                    </div>
-                    <div class="field">
-                        <label>📦 Detalle</label>
-                        <input id="frmDetalle" value="${parsed.detalle||''}">
-                    </div>
-                </div>
-                ${fechaDisplay}
-                <div class="field">
-                    <label>👤 Quién dejó</label>
-                    <input id="frmQuienDejo" placeholder="Opcional">
-                </div>
-                <input type="hidden" id="frmCodigo" value="${parsed.codigo}">
-                <div class="btn-row">
-                    <button class="btn btn-outline" onclick="App.limpiarResultado()">🗑️ Cancelar</button>
-                    <button class="btn btn-primary" onclick="App.guardarPaqueteDesdeForm()">💾 Guardar paquete</button>
-                </div>
-            </div>`;
-    },
-
-    // -------- Mostrar estadísticas --------
     renderStats(paquetes) {
         const cfg = Config.getConfig();
         const total = paquetes.length;
@@ -180,5 +105,128 @@ const UI = {
             <div class="stat"><b>${fmtMoney(deudaTotal,cfg)}</b><span>Deuda total</span></div>
             <div class="stat" style="border-left:3px solid var(--danger);"><b style="color:var(--danger);">${vencidos}</b><span>Vencidos</span></div>
         `;
+    },
+
+    mostrarFormularioConDatos(parsed) {
+        const box = document.getElementById('scanResultBox');
+
+        // Verificar si ya existe un paquete pendiente con este código
+        let paqueteExistente = null;
+        if (parsed.codigo && esCodigoValido(parsed.codigo)) {
+            paqueteExistente = DB.getPaquetes().find(p =>
+                p.codigo === parsed.codigo.toUpperCase() && p.estado === 'pendiente'
+            );
+        }
+
+        if (paqueteExistente) {
+            this.mostrarPaqueteExistente(paqueteExistente);
+            return;
+        }
+
+        const fechaDisplay = parsed.fecha_ticket ?
+            `<div class="field"><label>📅 Fecha del ticket</label><input id="frmFechaTicket" value="${parsed.fecha_ticket}" style="background:var(--surface-2);"></div>` :
+            '';
+
+        const advertenciaCodigo = (!parsed.codigo || !esCodigoValido(parsed.codigo)) ?
+            `<p class="hint" style="color:var(--warn);font-weight:bold;font-size:14px;">
+                ⚠️ El código gigante no se detectó correctamente. Escríbelo manualmente abajo.
+            </p>` :
+            '';
+
+        box.innerHTML = `
+            <div class="panel success scan-result">
+                <h3>📦 ${parsed.cliente_nombre ? 'Datos detectados' : 'Registrar paquete'}</h3>
+                ${advertenciaCodigo}
+
+                <div class="field" style="border:2px solid var(--accent);border-radius:8px;padding:10px;background:var(--bg);">
+                    <label style="font-size:14px;font-weight:bold;color:var(--accent);">
+                        🔤 CÓDIGO (EDITA SI ES NECESARIO)
+                    </label>
+                    <input id="frmCodigo"
+                           value="${parsed.codigo || ''}"
+                           placeholder="Ej: A49, A10"
+                           style="font-size:28px;font-weight:bold;text-align:center;background:white;border:2px solid var(--accent);">
+                </div>
+
+                <div class="field">
+                    <label>👤 Nombre del cliente</label>
+                    <input id="frmNombre" value="${parsed.cliente_nombre || ''}" placeholder="Nombre completo">
+                </div>
+
+                <div class="row2">
+                    <div class="field">
+                        <label>📱 Celular</label>
+                        <input id="frmCelular" value="${parsed.cliente_celular || ''}" placeholder="71234567">
+                    </div>
+                    <div class="field">
+                        <label>📦 Detalle</label>
+                        <input id="frmDetalle" value="${parsed.detalle || ''}" placeholder="ELECTRONICOS">
+                    </div>
+                </div>
+
+                ${fechaDisplay}
+
+                <div class="field">
+                    <label>👤 Quién dejó</label>
+                    <input id="frmQuienDejo" placeholder="Opcional">
+                </div>
+
+                <input type="hidden" id="frmTienda" value="${parsed.tienda || 'MEDIA LUNA'}">
+
+                <div class="btn-row">
+                    <button class="btn btn-outline" onclick="App.limpiarResultado()">🗑️ Cancelar</button>
+                    <button class="btn btn-primary" onclick="App.guardarPaqueteDesdeForm()">💾 Guardar paquete</button>
+                </div>
+
+                <p class="hint" style="margin-top:10px;font-size:11px;color:var(--muted);">
+                    💡 El código es el que está impreso en GRANDE en el ticket (ej: A49, A10).
+                    ${(!parsed.codigo || !esCodigoValido(parsed.codigo)) ? '⚠️ Como no se detectó, escríbelo manualmente.' : 'Si es incorrecto, corrígelo.'}
+                </p>
+            </div>
+        `;
+
+        if (!parsed.codigo || !esCodigoValido(parsed.codigo)) {
+            setTimeout(() => {
+                document.getElementById('frmCodigo')?.focus();
+                document.getElementById('frmCodigo')?.select();
+            }, 400);
+        }
+    },
+
+    // --- CORREGIDO ---
+    // Antes: los botones usaban 'App.confirmarEntrega('+pkg.id+')' escrito
+    // literalmente DENTRO del template string (backticks), en vez de usar
+    // ${pkg.id}. Como no eran ${...}, el navegador guardaba el texto literal
+    // "+pkg.id+" en el atributo onclick, y al hacer click se llamaba a la
+    // función con un argumento inválido en vez del id real del paquete.
+    // Ahora todo usa data-action/data-id con un listener delegado (más
+    // seguro) o ${pkg.id} cuando se necesita interpolar directamente.
+    mostrarPaqueteExistente(pkg) {
+        const box = document.getElementById('scanResultBox');
+        const cfg = Config.getConfig();
+        const deuda = Config.calcularDeuda(pkg, cfg);
+
+        box.innerHTML = `
+            <div class="panel warn">
+                <b style="color:var(--warn);">⚠️ PAQUETE YA REGISTRADO</b>
+                <div style="margin-top:10px;"><span class="code-badge">${pkg.codigo}</span></div>
+                <p style="margin:10px 0 2px;font-size:15px;font-weight:600;">${pkg.cliente_nombre}</p>
+                <p class="hint" style="margin:2px 0;">Estado: ${pkg.estado} · Ingreso: ${fmtDate(pkg.fecha_ingreso)}</p>
+                <p class="hint" style="margin:2px 0 10px;">Deuda: <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b></p>
+                <div class="btn-row">
+                    ${pkg.estado==='pendiente' ? '<button class="btn btn-success" data-action="entregar" data-id="'+pkg.id+'">✅ Entregar</button>' : ''}
+                    <button class="btn btn-outline" data-action="editar" data-id="${pkg.id}">✏️ Editar</button>
+                    <button class="btn btn-outline" onclick="App.limpiarResultado()">📷 Escanear otro</button>
+                </div>
+            </div>`;
+
+        // Delegación de eventos para los botones con data-action de este panel
+        box.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = parseInt(btn.dataset.id, 10);
+                if (btn.dataset.action === 'entregar') App.confirmarEntrega(id);
+                if (btn.dataset.action === 'editar') App.openEditForm(id);
+            });
+        });
     }
 };

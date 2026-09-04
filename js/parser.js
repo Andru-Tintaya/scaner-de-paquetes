@@ -1,19 +1,11 @@
 /**
- * PARSER - Parseo de tickets OCR con corrección de código gigante
+ * PARSER - Parseo de tickets OCR
  */
 
 const Parser = {
-    // Palabras clave para detección
-    KEYWORDS_DETALLE: [
-        'FRAGIL', 'FRÁGIL', 'ROPA', 'VAJILLA', 'JUGUETES',
-        'ELECTRONICOS', 'ELECTRÓNICOS', 'CABLES', 'DELICADO',
-        'ZAPATOS', 'LIBROS', 'ALIMENTOS', 'DOCUMENTOS',
-        'MUEBLES', 'HERRAMIENTAS', 'COSMETICOS', 'MEDICAMENTOS'
-    ],
-
+    KEYWORDS_DETALLE: ['FRAGIL', 'FRÁGIL', 'ROPA', 'VAJILLA', 'JUGUETES', 'ELECTRONICOS', 'ELECTRÓNICOS', 'CABLES', 'DELICADO', 'ZAPATOS', 'LIBROS', 'ALIMENTOS', 'DOCUMENTOS'],
     KEYWORDS_TIENDA: ['MEDIA LUNA', 'MEDIALUNA'],
 
-    // Parsear texto del ticket
     parseTicketData(rawText) {
         const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         const fullText = rawText.toUpperCase();
@@ -26,8 +18,7 @@ const Parser = {
             tienda = null;
         let codigoLineIdx = -1;
 
-        // -------- ESTRATEGIAS PARA DETECTAR CÓDIGO --------
-        // 1. Buscar patrón en líneas completas
+        // --- CÓDIGO ---
         for (let i = 0; i < lines.length; i++) {
             const candidate = normalizeCodigo(lines[i]);
             if (esCodigoValido(candidate)) {
@@ -36,8 +27,6 @@ const Parser = {
                 break;
             }
         }
-
-        // 2. Buscar en todo el texto
         if (!codigo) {
             const m = fullText.match(/\b([A-Z])\s*[-\s]?\s*(\d{1,4})\b/);
             if (m) {
@@ -45,55 +34,40 @@ const Parser = {
                 if (esCodigoValido(cand)) codigo = cand;
             }
         }
-
-        // 3. Buscar en líneas cortas
         if (!codigo) {
             for (const line of lines) {
                 const clean = line.replace(/[^A-Z0-9]/g, '');
                 if (clean.length >= 2 && clean.length <= 5 && /^[A-Z]/.test(clean)) {
                     const cand = normalizeCodigo(clean);
-                    if (esCodigoValido(cand)) {
-                        codigo = cand;
-                        codigoLineIdx = lines.indexOf(line);
-                        break;
-                    }
+                    if (esCodigoValido(cand)) { codigo = cand; break; }
                 }
             }
         }
 
-        // 4. Buscar líneas con "CÓDIGO:" explícito
-        if (!codigo) {
-            const m = fullText.match(/C[ÓO]DIGO\s*:?\s*([A-Z0-9]{2,5})/);
-            if (m) {
-                const cand = normalizeCodigo(m[1]);
-                if (esCodigoValido(cand)) codigo = cand;
-            }
-        }
-
-        // -------- FECHA --------
+        // --- FECHA ---
         const fechaMatch = rawText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})(\s+\d{1,2}:\d{2})?\b/);
         if (fechaMatch) fecha_ticket = fechaMatch[1] + (fechaMatch[2] || '');
 
-        // -------- TIENDA --------
+        // --- TIENDA ---
         for (const kw of this.KEYWORDS_TIENDA) {
             if (fullText.includes(kw)) { tienda = 'MEDIA LUNA'; break; }
         }
 
-        // -------- DETALLE --------
+        // --- DETALLE ---
         const detalleLabel = rawText.match(/detalle\s*:?\s*([A-Za-zÁÉÍÓÚÑáéíóúñ ]{3,30})/i);
         if (detalleLabel) {
-            detalle = detalleLabel[1].trim().toUpperCase();
+            detalle = detalleLabel[1].trim();
         } else {
             for (const kw of this.KEYWORDS_DETALLE) {
                 if (fullText.includes(kw)) { detalle = kw; break; }
             }
         }
 
-        // -------- CELULAR --------
+        // --- CELULAR ---
         const celMatch = rawText.replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, '').match(/\b\d{7,10}\b/);
         if (celMatch) cliente_celular = celMatch[0];
 
-        // -------- NOMBRE --------
+        // --- NOMBRE ---
         const isNoise = (line) => {
             const up = line.toUpperCase();
             if (/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(line)) return true;
@@ -112,8 +86,6 @@ const Parser = {
                 break;
             }
         }
-
-        // Fallback: buscar cualquier línea con solo letras
         if (!cliente_nombre) {
             for (const line of lines) {
                 if (/^[A-Za-zÁÉÍÓÚÑáéíóúñ\s]{3,}$/.test(line) && !isNoise(line)) {
@@ -126,11 +98,9 @@ const Parser = {
         return { codigo, cliente_nombre, cliente_celular, detalle, fecha_ticket, tienda };
     },
 
-    // Parsear QR (formato: codigo|nombre|celular|detalle|fecha|tienda)
     parseQRData(text) {
         const parts = text.split('|');
         if (parts.length < 2) return null;
-
         return {
             codigo: normalizeCodigo(parts[0] || ''),
             cliente_nombre: capitalizar((parts[1] || '').trim()),

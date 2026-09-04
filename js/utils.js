@@ -2,39 +2,33 @@
  * UTILIDADES - Funciones genéricas reutilizables
  */
 
-// Formatear moneda
 function fmtMoney(n, cfg) {
     cfg = cfg || Config.getConfig();
     return (cfg.moneda || 'Bs') + ' ' + (Math.round(n * 100) / 100).toFixed(2);
 }
 
-// Formatear fecha
 function fmtDate(iso) {
     if (!iso) return '—';
     const d = new Date(iso);
     return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 }
 
-// Formatear fecha corta
 function fmtDateShort(iso) {
     if (!iso) return '—';
     const d = new Date(iso);
     return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
 }
 
-// Pad con cero
 function pad2(n) {
     return n < 10 ? '0' + n : '' + n;
 }
 
-// Días entre dos fechas
 function daysBetween(iso, ref) {
     const a = new Date(iso);
     const b = ref ? new Date(ref) : new Date();
     return Math.floor((b - a) / 86400000);
 }
 
-// Mostrar toast
 function toast(msg, type) {
     const t = document.createElement('div');
     t.className = 'toast';
@@ -45,12 +39,10 @@ function toast(msg, type) {
     setTimeout(() => t.remove(), 2800);
 }
 
-// Generar ID aleatorio
 function generarId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-// Capitalizar texto
 function capitalizar(texto) {
     if (!texto) return '';
     return texto.split(' ').map(w =>
@@ -58,7 +50,6 @@ function capitalizar(texto) {
     ).join(' ');
 }
 
-// Normalizar código OCR
 function normalizeCodigo(raw) {
     if (!raw) return '';
     let c = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -81,17 +72,14 @@ function normalizeCodigo(raw) {
     return letter + digits;
 }
 
-// Validar código
 function esCodigoValido(c) {
     return /^[A-Z]\d{1,4}$/.test(c);
 }
 
-// Validar celular (Bolivia)
 function esCelularValido(cel) {
     return /^[6-9]\d{7}$/.test(cel.replace(/\D/g, ''));
 }
 
-// Validar fecha
 function esFechaValida(str) {
     return /\d{1,2}\/\d{1,2}\/\d{2,4}(\s+\d{1,2}:\d{2})?/.test(str);
 }

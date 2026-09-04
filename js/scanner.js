@@ -1,5 +1,30 @@
 /**
- * SCANNER - Gestión de cámara, OCR y QR (OPTIMIZADO)
+ * SCANNER - Gestión de cámara, OCR y QR
+ *
+ * ============================================================
+ * CORRECCIONES APLICADAS (esto era lo que rompía el escáner):
+ *
+ * 1) worker.recognize(imagen, 'spa+eng', {tessedit_pageseg_mode:...})
+ *    NO es válido en Tesseract.js v5. La firma real es
+ *    worker.recognize(imagen, options) donde "options" es un OBJETO
+ *    (p.ej. {rectangle:...}), nunca un string de idioma. Al pasar el
+ *    string 'spa+eng' como si fuera ese objeto, cada llamada a
+ *    recognize() lanzaba una excepción y por eso "ya no escaneaba nada".
+ *    Arreglo: worker.recognize(canvas) a secas, usando el worker que
+ *    ya se creó con el idioma correcto (spa) en createWorker.
+ *
+ * 2) El preprocesamiento aplicaba una binarización dura (blanco/negro
+ *    puro con un único umbral fijo). Eso destruye el detalle del texto
+ *    pequeño del ticket cuando la iluminación no es perfectamente
+ *    uniforme. Arreglo: solo escala de grises + aumento de contraste
+ *    moderado (sin binarizar), que es lo que de verdad ayuda a
+ *    Tesseract con texto mixto (letras gigantes + letras pequeñas).
+ *
+ * 3) La imagen se reducía a un máximo de 800px de ancho, empeorando la
+ *    lectura de la letra pequeña. Arreglo: se sube la resolución
+ *    objetivo y se permite ampliar (no solo reducir) cuando la cámara
+ *    entrega un frame pequeño.
+ * ============================================================
  */
 
 const Scanner = {
@@ -7,21 +32,21 @@ const Scanner = {
     currentDeviceId: null,
     availableCameras: [],
     ocrWorker: null,
+    qrScanner: null,
     scanMode: 'registro',
     scanType: 'ocr',
     onResultCallback: null,
     isProcessing: false,
 
-    // Inicializar
     init(onResult) {
-        this.onResultCallback = onResult || function() {};
+        this.onResultCallback = onResult || function () {};
     },
 
-    // -------- Modos --------
     setMode(mode) {
         this.scanMode = mode;
         document.getElementById('modeRegistro').classList.toggle('active', mode === 'registro');
         document.getElementById('modeConsulta').classList.toggle('active', mode === 'consulta');
+        document.getElementById('scanResultBox').innerHTML = '';
     },
 
     setType(type) {
@@ -32,7 +57,6 @@ const Scanner = {
         document.getElementById('scanResultBox').innerHTML = '';
     },
 
-    // -------- Cámara --------
     async startCamera() {
         document.getElementById('scanResultBox').innerHTML = '';
         if (this.scanType === 'qr') { return this.startQr(); }
@@ -40,7 +64,7 @@ const Scanner = {
         try {
             const constraints = this.currentDeviceId ?
                 { video: { deviceId: { exact: this.currentDeviceId } } } :
-                { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } };
+                { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } };
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
         } catch (e) {
             toast('❌ No se pudo acceder a la cámara: ' + e.message, 'error');
@@ -106,8 +130,49 @@ const Scanner = {
         el.classList.toggle('show', !!show);
     },
 
+    async getOcrWorker() {
+        if (!this.ocrWorker) {
+            this.setStatus('⏳ Cargando motor OCR (primera vez)...', true);
+            this.ocrWorker = await Tesseract.createWorker('spa');
+        }
+        return this.ocrWorker;
+    },
+
+    /**
+     * Prepara el frame para OCR: escala de grises + contraste moderado.
+     * SIN binarización dura: eso es lo que rompía la lectura del texto
+     * pequeño del ticket. Además, si la imagen de origen es más chica
+     * que el ancho objetivo, la AMPLIA en vez de reducirla, porque un
+     * texto pequeño escaneado en baja resolución es ilegible para
+     * Tesseract.
+     */
+    prepararCanvas(source, srcWidth, srcHeight) {
+        const canvas = document.getElementById('ocrCanvas');
+        const targetWidth = 1400; // suficiente para leer letra chica y el código gigante a la vez
+        const scale = Math.min(2.2, targetWidth / srcWidth) || 1;
+        canvas.width = Math.max(1, Math.round(srcWidth * scale));
+        canvas.height = Math.max(1, Math.round(srcHeight * scale));
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+
+        // Escala de grises + contraste moderado (NO binarización)
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = imgData.data;
+        const contrast = 1.25; // moderado: mejora legibilidad sin borrar detalle fino
+        for (let i = 0; i < d.length; i += 4) {
+            let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            gray = (gray - 128) * contrast + 128;
+            gray = Math.max(0, Math.min(255, gray));
+            d[i] = d[i + 1] = d[i + 2] = gray;
+        }
+        ctx.putImageData(imgData, 0, 0);
+        return canvas;
+    },
+
     // ============================================================
-    // 🚀 CAPTURAR Y ESCANEAR (RÁPIDO)
+    // 📸 CAPTURAR Y ESCANEAR (FUNCIÓN PRINCIPAL) — CORREGIDA
     // ============================================================
     async capturarYEscanear() {
         if (this.isProcessing) return;
@@ -121,103 +186,55 @@ const Scanner = {
 
         try {
             const video = document.getElementById('video');
+            const canvas = this.prepararCanvas(video, video.videoWidth, video.videoHeight);
 
-            // 1. Capturar frame en un canvas
-            const canvas = document.getElementById('ocrCanvas');
-            const vW = video.videoWidth;
-            const vH = video.videoHeight;
+            this.setStatus('🔎 Leyendo ticket...', true);
 
-            // Escala para mejor rendimiento (no muy grande)
-            const scale = Math.min(1.2, 800 / vW);
-            const w = Math.round(vW * scale);
-            const h = Math.round(vH * scale);
-            canvas.width = w;
-            canvas.height = h;
-
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, w, h);
-
-            // 2. MEJORA RÁPIDA DE IMAGEN (contraste + nitidez)
-            this.mejorarImagenRapida(ctx, w, h);
-
-            this.setStatus('🔎 Escaneando ticket...', true);
-
-            // 3. OCR - UN SOLO PASO (sin múltiples escalas)
             const worker = await this.getOcrWorker();
-            const { data } = await worker.recognize(
-                canvas.toDataURL('image/jpeg', 0.92),
-                'spa+eng',
-                { tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK }
-            );
+            // CORREGIDO: antes se llamaba worker.recognize(dataURL, 'spa+eng', {...}),
+            // lo cual no es válido y hacía fallar el reconocimiento siempre.
+            // Se le pasa el canvas directamente (más rápido y sin pérdida por
+            // re-codificar a JPEG), sin un segundo argumento inválido.
+            const { data } = await worker.recognize(canvas);
 
-            const texto = data.text;
-            console.log('📝 OCR:', texto);
+            const texto = data.text || '';
+            console.log('📝 OCR DETECTADO:', texto);
 
-            // 4. Parsear resultado
             const parsed = Parser.parseTicketData(texto);
+            console.log('📦 DATOS EXTRAIDOS:', parsed);
 
-            if (parsed.codigo && parsed.codigo.length >= 2) {
-                this.setStatus('✅ Ticket leído', true);
-                if (this.onResultCallback) {
-                    this.onResultCallback(parsed);
-                }
-            } else {
-                this.setStatus('⚠️ No se detectó código. Intenta de nuevo o escribe manualmente.', true);
-                // Mostrar formulario con campos vacíos para corrección manual
-                if (this.onResultCallback) {
-                    this.onResultCallback({
-                        codigo: '',
-                        cliente_nombre: '',
-                        cliente_celular: '',
-                        detalle: '',
-                        fecha_ticket: '',
-                        tienda: 'MEDIA LUNA',
-                        _manual: true
-                    });
-                }
+            this.setStatus('✅ Escaneo completado', true);
+
+            if (this.onResultCallback) {
+                this.onResultCallback({
+                    codigo: parsed.codigo || '',
+                    cliente_nombre: parsed.cliente_nombre || '',
+                    cliente_celular: parsed.cliente_celular || '',
+                    detalle: parsed.detalle || '',
+                    fecha_ticket: parsed.fecha_ticket || '',
+                    tienda: parsed.tienda || 'MEDIA LUNA'
+                });
             }
 
         } catch (e) {
             console.error('Error en captura:', e);
-            this.setStatus('⚠️ Error al escanear. Intenta de nuevo.', true);
-            toast('Error al procesar la imagen', 'error');
+            this.setStatus('⚠️ Error al escanear. Usa el formulario manual.', true);
+            if (this.onResultCallback) {
+                this.onResultCallback({
+                    codigo: '',
+                    cliente_nombre: '',
+                    cliente_celular: '',
+                    detalle: '',
+                    fecha_ticket: '',
+                    tienda: 'MEDIA LUNA',
+                    _error: true
+                });
+            }
         } finally {
             this.isProcessing = false;
         }
     },
 
-    // ============================================================
-    // MEJORA DE IMAGEN RÁPIDA (contraste + nitidez)
-    // ============================================================
-    mejorarImagenRapida(ctx, w, h) {
-        const imgData = ctx.getImageData(0, 0, w, h);
-        const d = imgData.data;
-
-        // 1. Convertir a escala de grises
-        for (let i = 0; i < d.length; i += 4) {
-            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            d[i] = d[i + 1] = d[i + 2] = gray;
-        }
-
-        // 2. Contraste fuerte (resalta texto)
-        const factorContraste = 1.6;
-        const umbral = 128;
-        for (let i = 0; i < d.length; i += 4) {
-            let val = d[i];
-            val = (val - umbral) * factorContraste + umbral;
-            val = Math.max(0, Math.min(255, val));
-            d[i] = d[i + 1] = d[i + 2] = val > 135 ? 255 : 0; // Binarización
-        }
-
-        // 3. Filtro de nitidez simple (opcional)
-        // omitimos para velocidad
-
-        ctx.putImageData(imgData, 0, 0);
-    },
-
-    // ============================================================
-    // SUBIR FOTO (con mejora rápida)
-    // ============================================================
     async handleFileUpload(file) {
         if (!file) return;
         if (this.scanType !== 'ocr') { toast('Cambia a modo OCR', 'error'); return; }
@@ -225,45 +242,39 @@ const Scanner = {
 
         try {
             const img = await createImageBitmap(file);
-            const canvas = document.getElementById('ocrCanvas');
-            const scale = Math.min(1.2, 800 / img.width);
-            canvas.width = Math.round(img.width * scale);
-            canvas.height = Math.round(img.height * scale);
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            this.mejorarImagenRapida(ctx, canvas.width, canvas.height);
+            const canvas = this.prepararCanvas(img, img.width, img.height);
 
             const worker = await this.getOcrWorker();
-            const { data } = await worker.recognize(
-                canvas.toDataURL('image/jpeg', 0.92),
-                'spa+eng',
-                { tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK }
-            );
+            // Mismo arreglo que en capturarYEscanear(): sin segundo argumento inválido.
+            const { data } = await worker.recognize(canvas);
 
-            const parsed = Parser.parseTicketData(data.text);
+            const parsed = Parser.parseTicketData(data.text || '');
             this.setStatus('', false);
 
-            if (parsed.codigo && parsed.cliente_nombre) {
-                if (this.onResultCallback) this.onResultCallback(parsed);
-            } else {
-                toast('No se detectó código y nombre.', 'error');
-                if (this.onResultCallback) {
-                    this.onResultCallback({
-                        codigo: '',
-                        cliente_nombre: '',
-                        cliente_celular: '',
-                        detalle: '',
-                        fecha_ticket: '',
-                        tienda: 'MEDIA LUNA',
-                        _manual: true
-                    });
-                }
+            if (this.onResultCallback) {
+                this.onResultCallback({
+                    codigo: parsed.codigo || '',
+                    cliente_nombre: parsed.cliente_nombre || '',
+                    cliente_celular: parsed.cliente_celular || '',
+                    detalle: parsed.detalle || '',
+                    fecha_ticket: parsed.fecha_ticket || '',
+                    tienda: parsed.tienda || 'MEDIA LUNA'
+                });
             }
         } catch (e) {
             toast('Error: ' + e.message, 'error');
+            if (this.onResultCallback) {
+                this.onResultCallback({
+                    codigo: '',
+                    cliente_nombre: '',
+                    cliente_celular: '',
+                    detalle: '',
+                    fecha_ticket: '',
+                    tienda: 'MEDIA LUNA',
+                    _error: true
+                });
+            }
         }
-        document.getElementById('fileInput').value = '';
     },
 
     // ============================================================
@@ -299,8 +310,17 @@ const Scanner = {
 
         if (text.includes('|')) {
             const parsed = Parser.parseQRData(text);
-            if (parsed && parsed.codigo && parsed.cliente_nombre) {
-                if (this.onResultCallback) this.onResultCallback(parsed);
+            if (parsed) {
+                if (this.onResultCallback) {
+                    this.onResultCallback({
+                        codigo: parsed.codigo || '',
+                        cliente_nombre: parsed.cliente_nombre || '',
+                        cliente_celular: parsed.cliente_celular || '',
+                        detalle: parsed.detalle || '',
+                        fecha_ticket: parsed.fecha_ticket || '',
+                        tienda: parsed.tienda || 'MEDIA LUNA'
+                    });
+                }
                 return;
             }
         }
@@ -313,13 +333,5 @@ const Scanner = {
             toast('QR no reconocido.', 'error');
             if (this.qrScanner) this.qrScanner.resume();
         }
-    },
-
-    async getOcrWorker() {
-        if (!this.ocrWorker) {
-            this.setStatus('⏳ Cargando OCR...', true);
-            this.ocrWorker = await Tesseract.createWorker('spa');
-        }
-        return this.ocrWorker;
     }
 };

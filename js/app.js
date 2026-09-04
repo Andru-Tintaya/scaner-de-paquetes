@@ -1,5 +1,5 @@
 /**
- * APP - Controlador principal (ACTUALIZADO)
+ * APP - Controlador principal
  */
 
 const App = {
@@ -7,16 +7,14 @@ const App = {
     filter: 'todos',
 
     init() {
-        // Configurar scanner
         Scanner.init((resultado) => {
             if (resultado._existing) {
                 this.showExistingPackage(resultado.paquete);
             } else {
-                this.handleScanResult(resultado);
+                UI.mostrarFormularioConDatos(resultado);
             }
         });
 
-        // Cargar configuración
         const cfg = Config.getConfig();
         document.getElementById('cfgMoneda').value = cfg.moneda;
         document.getElementById('cfgPrecioBase').value = cfg.precio_base;
@@ -29,7 +27,6 @@ const App = {
         this.updateHeaderStats();
         this.showView('scanner');
 
-        // Eventos
         document.getElementById('btnStartCam').onclick = () => Scanner.startCamera();
         document.getElementById('btnStopCam').onclick = () => Scanner.stop();
         document.getElementById('btnSwitchCam').onclick = () => Scanner.switchCamera();
@@ -71,74 +68,40 @@ const App = {
         document.getElementById('scanResultBox').innerHTML = '';
     },
 
-    // -------- Wrappers cámara --------
     startCamera() { Scanner.startCamera(); },
     stopCamera() { Scanner.stop(); },
     switchCamera() { Scanner.switchCamera(); },
     capturarYEscanear() { Scanner.capturarYEscanear(); },
 
-    // -------- Resultado del escaneo --------
-    handleScanResult(parsed) {
-        if (parsed._manual) {
-            // Modo manual: mostrar formulario vacío para corrección
-            this.showManualForm(parsed);
-            return;
-        }
-        UI.showScanResult(parsed, Scanner.scanMode);
+    limpiarResultado() {
+        document.getElementById('scanResultBox').innerHTML = '';
     },
 
-    // -------- Formulario manual (para corrección) --------
-    showManualForm(parsed) {
-        const box = document.getElementById('scanResultBox');
-        const fechaDisplay = parsed.fecha_ticket ?
-            `<div class="field"><label>📅 Fecha del ticket</label><input id="frmFechaTicket" value="${parsed.fecha_ticket}" style="background:var(--surface-2);"></div>` :
-            '';
-
-        box.innerHTML = `
-            <div class="panel success scan-result">
-                <h3>📝 Corregir datos manualmente</h3>
-                <p class="hint" style="color:var(--warn);">El código gigante no se detectó. Escríbelo manualmente.</p>
-                <div class="field">
-                    <label>🔤 Código (corregir manualmente)</label>
-                    <input id="frmCodigo" value="${parsed.codigo||''}" placeholder="Ej: A49, A10" style="border:2px solid var(--accent);font-size:20px;font-weight:bold;">
-                </div>
-                <div class="field">
-                    <label>👤 Nombre del cliente</label>
-                    <input id="frmNombre" value="${(parsed.cliente_nombre||'').replace(/"/g,'')}" placeholder="Nombre completo">
-                </div>
-                <div class="row2">
-                    <div class="field">
-                        <label>📱 Celular</label>
-                        <input id="frmCelular" value="${parsed.cliente_celular||''}" placeholder="71234567">
-                    </div>
-                    <div class="field">
-                        <label>📦 Detalle</label>
-                        <input id="frmDetalle" value="${parsed.detalle||''}" placeholder="ELECTRONICOS">
-                    </div>
-                </div>
-                ${fechaDisplay}
-                <div class="field">
-                    <label>👤 Quién dejó</label>
-                    <input id="frmQuienDejo" placeholder="Opcional">
-                </div>
-                <div class="btn-row">
-                    <button class="btn btn-outline" onclick="App.limpiarResultado()">🗑️ Cancelar</button>
-                    <button class="btn btn-primary" onclick="App.guardarPaqueteDesdeForm()">💾 Guardar paquete</button>
-                </div>
-            </div>`;
-    },
-
-    // -------- Guardar desde formulario --------
     guardarPaqueteDesdeForm() {
-        const codigo = normalizeCodigo(document.getElementById('frmCodigo').value);
+        const codigoRaw = document.getElementById('frmCodigo').value.trim();
+        const codigo = normalizeCodigo(codigoRaw);
         const nombre = document.getElementById('frmNombre').value.trim();
 
         if (!codigo || !esCodigoValido(codigo)) {
-            toast('❌ Código inválido. Formato: Letra + números (ej: A49)', 'error');
+            toast('❌ Código inválido. Debe ser letra + números (ej: A49, A10)', 'error');
+            document.getElementById('frmCodigo').focus();
+            document.getElementById('frmCodigo').select();
             return;
         }
+
         if (!nombre) {
             toast('❌ El nombre es obligatorio', 'error');
+            document.getElementById('frmNombre').focus();
+            return;
+        }
+
+        const existe = DB.getPaquetes().find(p =>
+            p.codigo === codigo.toUpperCase() && p.estado === 'pendiente'
+        );
+
+        if (existe) {
+            toast('⚠️ Ya existe un paquete pendiente con este código', 'error');
+            UI.mostrarPaqueteExistente(existe);
             return;
         }
 
@@ -148,50 +111,40 @@ const App = {
             cliente_celular: document.getElementById('frmCelular').value.trim() || null,
             detalle: document.getElementById('frmDetalle').value.trim() || null,
             quien_dejo: document.getElementById('frmQuienDejo').value.trim() || null,
-            fecha_ticket: document.getElementById('frmFechaTicket')?.value.trim() || null
+            fecha_ticket: document.getElementById('frmFechaTicket')?.value.trim() || null,
+            tienda: document.getElementById('frmTienda')?.value || 'MEDIA LUNA'
         });
 
         if (result.success) {
-            toast('✅ Paquete registrado', 'success');
-            document.getElementById('scanResultBox').innerHTML =
-                '<div class="panel success">✅ Paquete <b>' + codigo + '</b> registrado para <b>' + nombre + '</b>.</div>';
+            toast('✅ Paquete registrado correctamente', 'success');
+            document.getElementById('scanResultBox').innerHTML = `
+                <div class="panel success">
+                    ✅ Paquete <b>${codigo.toUpperCase()}</b> registrado para <b>${nombre}</b>.
+                    <br><br>
+                    <button class="btn btn-outline btn-sm" onclick="App.limpiarResultado()">📷 Escanear otro</button>
+                    <button class="btn btn-primary btn-sm" onclick="App.showView('paquetes')">📦 Ver paquetes</button>
+                </div>
+            `;
             this.renderPaquetes();
             this.updateHeaderStats();
         } else {
             toast('❌ ' + result.error, 'error');
-            if (result.paquete) this.showExistingPackage(result.paquete);
+            if (result.paquete) UI.mostrarPaqueteExistente(result.paquete);
         }
     },
 
-    // -------- Mostrar paquete existente --------
     showExistingPackage(pkg) {
-        const box = document.getElementById('scanResultBox');
-        const cfg = Config.getConfig();
-        const deuda = Config.calcularDeuda(pkg, cfg);
-
-        box.innerHTML = `
-            <div class="panel warn">
-                <b style="color:var(--warn);">⚠️ PAQUETE YA REGISTRADO</b>
-                <div style="margin-top:10px;"><span class="code-badge">${pkg.codigo}</span></div>
-                <p style="margin:10px 0 2px;font-size:15px;font-weight:600;">${pkg.cliente_nombre}</p>
-                <p class="hint" style="margin:2px 0;">Estado: ${pkg.estado} · Ingreso: ${fmtDate(pkg.fecha_ingreso)}</p>
-                <p class="hint" style="margin:2px 0 10px;">Deuda: <b style="color:var(--accent)">${fmtMoney(deuda,cfg)}</b></p>
-                <div class="btn-row">
-                    ${pkg.estado==='pendiente' ? '<button class="btn btn-success" onclick="App.confirmarEntrega('+pkg.id+')">✅ Entregar</button>' : ''}
-                    <button class="btn btn-outline" onclick="App.openEditForm('+pkg.id+')">✏️ Editar</button>
-                </div>
-            </div>`;
-    },
-
-    limpiarResultado() {
-        document.getElementById('scanResultBox').innerHTML = '';
+        UI.mostrarPaqueteExistente(pkg);
     },
 
     // -------- Registro manual --------
     openManualForm() {
         const html = `
             <h3>📦 Registrar paquete manualmente</h3>
-            <div class="field"><label>🔤 Código</label><input id="mCodigo" placeholder="Ej: A6, A49" style="font-size:20px;font-weight:bold;"></div>
+            <div class="field">
+                <label>🔤 Código</label>
+                <input id="mCodigo" placeholder="Ej: A6, A49" style="font-size:24px;font-weight:bold;text-align:center;">
+            </div>
             <div class="field"><label>👤 Nombre del cliente</label><input id="mNombre"></div>
             <div class="row2">
                 <div class="field"><label>📱 Celular</label><input id="mCelular"></div>
@@ -228,7 +181,7 @@ const App = {
             this.updateHeaderStats();
         } else {
             toast('❌ ' + result.error, 'error');
-            if (result.paquete) this.showExistingPackage(result.paquete);
+            if (result.paquete) UI.mostrarPaqueteExistente(result.paquete);
         }
     },
 
@@ -280,33 +233,31 @@ const App = {
         });
     },
 
-    // -------- Consulta pública --------
     renderPublicSearch() {
         const q = (document.getElementById('publicSearchBox')?.value || '').trim().toLowerCase();
         const box = document.getElementById('publicResultList');
-
         if (!q) {
             box.innerHTML = '<div class="empty-state">🔍 Escribe un código o nombre para buscar tu paquete.</div>';
             return;
         }
-
         const paquetes = DB.buscarPaquetes(q);
         if (paquetes.length === 0) {
             box.innerHTML = '<div class="empty-state">📭 No se encontraron paquetes.</div>';
             return;
         }
-
         box.innerHTML = paquetes.map(p => UI.renderPkgCard(p, true)).join('');
     },
 
-    // -------- Editar (UPDATE) --------
+    // -------- Editar --------
     openEditForm(id) {
         const p = DB.getPaquete(id);
         if (!p) return;
-
         const html = `
             <h3>✏️ Editar paquete ${p.codigo}</h3>
-            <div class="field"><label>🔤 Código</label><input id="eCodigo" value="${p.codigo}" style="font-size:18px;font-weight:bold;"></div>
+            <div class="field">
+                <label>🔤 Código</label>
+                <input id="eCodigo" value="${p.codigo}" style="font-size:24px;font-weight:bold;text-align:center;">
+            </div>
             <div class="field"><label>👤 Nombre</label><input id="eNombre" value="${p.cliente_nombre}"></div>
             <div class="row2">
                 <div class="field"><label>📱 Celular</label><input id="eCelular" value="${p.cliente_celular||''}"></div>
@@ -370,8 +321,6 @@ const App = {
             toast('✅ Paquete entregado', 'success');
             this.renderPaquetes();
             this.updateHeaderStats();
-            document.getElementById('scanResultBox').innerHTML =
-                '<div class="panel success">✅ Paquete <b>' + result.paquete.codigo + '</b> entregado.</div>';
         } else {
             toast('❌ ' + result.error, 'error');
         }
@@ -420,13 +369,13 @@ const App = {
         window.open('https://wa.me/' + numero + '?text=' + encodeURIComponent(mensaje), '_blank');
     },
 
-    // -------- QR del paquete --------
+    // -------- QR --------
     verQr(id) {
         const p = DB.getPaquete(id);
         if (!p) return;
         const html = `
             <h3>📱 QR del paquete ${p.codigo}</h3>
-            <p class="hint">Token único para este paquete (incluso si el código ${p.codigo} se reutiliza).</p>
+            <p class="hint">Token único para este paquete.</p>
             <div class="panel quiet" style="text-align:center;word-break:break-all;font-family:monospace;color:var(--accent);padding:12px;">${p.qr_token}</div>
             <button class="btn btn-outline" onclick="UI.closeModal()">Cerrar</button>`;
         UI.openModal(html);
@@ -451,8 +400,7 @@ const App = {
     eliminarTodosLosDatos() {
         const html = `
             <h3>⚠️ ELIMINAR TODOS LOS DATOS</h3>
-            <p class="hint" style="color:var(--danger);font-weight:600;">Esta acción eliminará TODOS los paquetes, movimientos y configuraciones. No se puede deshacer.</p>
-            <p class="hint">¿Estás seguro de que quieres continuar?</p>
+            <p class="hint" style="color:var(--danger);font-weight:600;">Esta acción eliminará TODOS los paquetes y configuraciones.</p>
             <div class="btn-row">
                 <button class="btn btn-outline" onclick="UI.closeModal()">Cancelar</button>
                 <button class="btn btn-danger" onclick="App.confirmarEliminarTodo()">🗑️ Eliminar todo</button>

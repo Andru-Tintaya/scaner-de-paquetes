@@ -11,7 +11,6 @@ const DB = {
         CLIENTES: 'ml_clientes'
     },
 
-    // -------- Lectura/Escritura --------
     read(key, fallback) {
         try {
             const v = localStorage.getItem(key);
@@ -25,14 +24,12 @@ const DB = {
         localStorage.setItem(key, JSON.stringify(val));
     },
 
-    // -------- ID --------
     nextId() {
         let seq = this.read(this.KEYS.SEQ, 0) + 1;
         this.write(this.KEYS.SEQ, seq);
         return seq;
     },
 
-    // -------- Paquetes (CRUD) --------
     getPaquetes() {
         return this.read(this.KEYS.PAQ, []);
     },
@@ -64,7 +61,6 @@ const DB = {
         const paquetes = this.getPaquetes();
         const cfg = Config.getConfig();
 
-        // Verificar pendiente con mismo código
         const existe = paquetes.find(p =>
             p.codigo === datos.codigo.toUpperCase() &&
             p.estado === 'pendiente'
@@ -95,8 +91,6 @@ const DB = {
         paquetes.push(nuevo);
         this.savePaquetes(paquetes);
         this.logMovimiento(nuevo.id, 'REGISTRO', 'Registrado');
-
-        // Actualizar cliente
         this.actualizarCliente(nuevo.cliente_nombre, nuevo.cliente_celular);
 
         return { success: true, paquete: nuevo };
@@ -107,7 +101,6 @@ const DB = {
         const p = paquetes.find(x => x.id === id);
         if (!p) return { success: false, error: 'Paquete no encontrado' };
 
-        // Verificar código duplicado
         if (datos.codigo && datos.codigo !== p.codigo) {
             const existe = paquetes.find(x =>
                 x.codigo === datos.codigo.toUpperCase() &&
@@ -131,7 +124,6 @@ const DB = {
         this.savePaquetes(paquetes);
         this.logMovimiento(id, 'EDICION', 'Datos actualizados');
 
-        // Actualizar cliente
         if (datos.cliente_nombre) {
             this.actualizarCliente(p.cliente_nombre, p.cliente_celular);
         }
@@ -169,7 +161,6 @@ const DB = {
         return { success: true };
     },
 
-    // -------- Clientes --------
     getClientes() {
         return this.read(this.KEYS.CLIENTES, []);
     },
@@ -199,7 +190,6 @@ const DB = {
         this.saveClientes(clientes);
     },
 
-    // -------- Movimientos (auditoría) --------
     logMovimiento(paquete_id, accion, detalle) {
         const mov = this.read(this.KEYS.MOV, []);
         mov.push({
@@ -216,7 +206,6 @@ const DB = {
         return this.read(this.KEYS.MOV, []).filter(m => m.paquete_id === paquete_id);
     },
 
-    // -------- Limpiar todo --------
     eliminarTodos() {
         const keys = [this.KEYS.PAQ, this.KEYS.CFG, this.KEYS.MOV, this.KEYS.SEQ, this.KEYS.CLIENTES];
         for (const key of keys) {
