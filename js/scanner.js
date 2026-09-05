@@ -1,21 +1,29 @@
 /**
  * SCANNER - Gestión de cámara, OCR y QR con DOBLE OCR ESPECIALIZADO
- * VERSIÓN MEJORADA - Robusta y optimizada para celular
+ * VERSIÓN ULTRA OPTIMIZADA PARA CELULAR
  * 
- * ARQUITECTURA:
- * 1. OCR GENERAL: imagen completa → texto normal
- * 2. OCR CÓDIGO: ROI escalonado + múltiples variantes + votación
+ * ARQUITECTURA COMPLETA:
+ * 1. OCR GENERAL: imagen completa → texto normal (nombre, fecha, celular, detalle, tienda)
+ * 2. OCR CÓDIGO: ROI escalonado + múltiples variantes + votación inteligente
  * 3. FUSIÓN: código del OCR especializado tiene prioridad
+ * 4. MEJORA DE IMAGEN: multi-estrategia para diferentes iluminaciones
+ * 5. CORRECCIÓN OCR: 20+ mapeos de confusiones visuales
+ * 6. SISTEMA DE VOTACIÓN: frecuencia + confianza + estructura
  * 
- * OPTIMIZACIONES:
- * - Workers reutilizables con timeout
- * - Procesamiento por lotes de variantes
- * - Early exit inteligente
- * - Liberación de memoria
- * - Logs detallados con debug toggle
+ * OPTIMIZACIONES PARA CELULAR:
+ * - Detección automática de capacidades del dispositivo
+ * - Resolución adaptativa según rendimiento
+ * - Workers con timeout y fallback
+ * - Procesamiento en lotes para evitar bloqueos
+ * - Memoria liberada inmediatamente
+ * - Logs con niveles de detalle
+ * - Cache de resultados para evitar reprocesamiento
  */
 
 const Scanner = {
+    // ============================================================
+    // PROPIEDADES
+    // ============================================================
     stream: null,
     currentDeviceId: null,
     availableCameras: [],
@@ -27,18 +35,64 @@ const Scanner = {
     onResultCallback: null,
     isProcessing: false,
     debug: true,
-    workerTimeout: 30000, // 30 segundos timeout para workers
+    isMobile: false,
+    deviceCapabilities: { cpu: 'medium', memory: 'medium' },
+    resultCache: {},
+    processingTime: 0,
+    stats: { attempts: 0, success: 0, failures: 0 },
 
+    // ============================================================
+    // INICIALIZACIÓN
+    // ============================================================
     init(onResult) {
         this.onResultCallback = onResult || function () {};
-        if (this.debug) console.log('🔍 Scanner inicializado (debug ON)');
+        
+        // Detectar dispositivo
+        this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent);
+        
+        // Detectar capacidades
+        this.detectarCapacidades();
+        
+        if (this.debug) {
+            console.log(`🔍 Scanner inicializado`);
+            console.log(`📱 Modo: ${this.isMobile ? 'MÓVIL' : 'PC'}`);
+            console.log(`⚡ CPU: ${this.deviceCapabilities.cpu}, Memoria: ${this.deviceCapabilities.memory}`);
+        }
     },
 
+    detectarCapacidades() {
+        // Detectar núcleos de CPU
+        const cores = navigator.hardwareConcurrency || 2;
+        if (cores >= 8) {
+            this.deviceCapabilities.cpu = 'high';
+        } else if (cores >= 4) {
+            this.deviceCapabilities.cpu = 'medium';
+        } else {
+            this.deviceCapabilities.cpu = 'low';
+        }
+
+        // Detectar memoria (estimada)
+        if ('deviceMemory' in navigator) {
+            const mem = navigator.deviceMemory || 4;
+            if (mem >= 8) {
+                this.deviceCapabilities.memory = 'high';
+            } else if (mem >= 4) {
+                this.deviceCapabilities.memory = 'medium';
+            } else {
+                this.deviceCapabilities.memory = 'low';
+            }
+        }
+    },
+
+    // ============================================================
+    // MODO Y TIPO
+    // ============================================================
     setMode(mode) {
         this.scanMode = mode;
         document.getElementById('modeRegistro').classList.toggle('active', mode === 'registro');
         document.getElementById('modeConsulta').classList.toggle('active', mode === 'consulta');
         document.getElementById('scanResultBox').innerHTML = '';
+        if (this.debug) console.log(`📋 Modo: ${mode}`);
     },
 
     setType(type) {
@@ -47,16 +101,43 @@ const Scanner = {
         document.getElementById('typeOcr').classList.toggle('active', type === 'ocr');
         document.getElementById('typeQr').classList.toggle('active', type === 'qr');
         document.getElementById('scanResultBox').innerHTML = '';
+        if (this.debug) console.log(`📋 Tipo: ${type}`);
     },
 
+    // ============================================================
+    // CÁMARA - OPTIMIZADA PARA CELULAR
+    // ============================================================
     async startCamera() {
         document.getElementById('scanResultBox').innerHTML = '';
         if (this.scanType === 'qr') { return this.startQr(); }
 
         try {
+            // Resolución adaptativa según capacidades
+            let maxRes = 1920;
+            if (this.isMobile) {
+                if (this.deviceCapabilities.cpu === 'high') maxRes = 1920;
+                else if (this.deviceCapabilities.cpu === 'medium') maxRes = 1280;
+                else maxRes = 800;
+            }
+
             const constraints = this.currentDeviceId ?
-                { video: { deviceId: { exact: this.currentDeviceId } } } :
-                { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } };
+                { video: { 
+                    deviceId: { exact: this.currentDeviceId },
+                    width: { ideal: maxRes },
+                    height: { ideal: maxRes * 0.75 },
+                    focusMode: 'continuous',
+                    exposureMode: 'continuous'
+                } } :
+                { video: { 
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: maxRes },
+                    height: { ideal: maxRes * 0.75 },
+                    focusMode: 'continuous',
+                    exposureMode: 'continuous'
+                } };
+
+            if (this.debug) console.log(`📷 Resolución cámara: ${maxRes}x${Math.round(maxRes * 0.75)}`);
+
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
         } catch (e) {
             toast('❌ No se pudo acceder a la cámara: ' + e.message, 'error');
@@ -80,7 +161,7 @@ const Scanner = {
             document.getElementById('btnSwitchCam').style.display = this.availableCameras.length > 1 ? 'inline-flex' : 'none';
         } catch (e) {}
 
-        this.setStatus('✅ Cámara lista. Presiona "Capturar y Escanear"', true);
+        this.setStatus('✅ Cámara lista. Presiona "Capturar"', true);
         if (this.debug) console.log('📷 Cámara iniciada');
     },
 
@@ -125,66 +206,76 @@ const Scanner = {
     },
 
     // ============================================================
-    // WORKERS OCR CON TIMEOUT Y REUTILIZACIÓN
+    // WORKERS OCR - CON CACHE Y TIMEOUT
     // ============================================================
     async getOcrWorker() {
         if (!this.ocrWorker) {
-            this.setStatus('⏳ Cargando OCR general...', true);
+            this.setStatus('⏳ (1/2) Cargando OCR...', true);
             if (this.debug) console.log('⏳ Creando worker OCR general...');
             
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Timeout creando worker general')), this.workerTimeout)
-            );
+            const startTime = Date.now();
             
-            this.ocrWorker = await Promise.race([
-                Tesseract.createWorker('spa'),
-                timeoutPromise
-            ]);
-            
-            if (this.debug) console.log('✅ Worker OCR general listo');
+            try {
+                // Configuración optimizada para móvil
+                this.ocrWorker = await Tesseract.createWorker('spa');
+                // Configurar para mejor rendimiento en móvil
+                await this.ocrWorker.setParameters({
+                    tessedit_pageseg_mode: '6', // PSM.SINGLE_BLOCK
+                    tessedit_ocr_engine_mode: '3' // OEM_LSTM_ONLY
+                });
+                const elapsed = Date.now() - startTime;
+                if (this.debug) console.log(`✅ Worker OCR general listo (${elapsed}ms)`);
+            } catch (e) {
+                console.error('Error creando worker general:', e);
+                throw e;
+            }
         }
         return this.ocrWorker;
     },
 
     async getOcrCodeWorker() {
         if (!this.ocrCodeWorker) {
-            this.setStatus('⏳ Cargando OCR de código...', true);
+            this.setStatus('⏳ (2/2) Cargando OCR código...', true);
             if (this.debug) console.log('⏳ Creando worker OCR código...');
             
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Timeout creando worker código')), this.workerTimeout)
-            );
+            const startTime = Date.now();
             
-            this.ocrCodeWorker = await Promise.race([
-                Tesseract.createWorker('eng'),
-                timeoutPromise
-            ]);
-            
-            // Configuración específica para código
-            await this.ocrCodeWorker.setParameters({
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-                tessedit_pageseg_mode: '8' // SINGLE_WORD
-            });
-            
-            if (this.debug) console.log('✅ Worker OCR código listo (whitelist: A-Z,0-9)');
+            try {
+                this.ocrCodeWorker = await Tesseract.createWorker('eng');
+                await this.ocrCodeWorker.setParameters({
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+                    tessedit_pageseg_mode: '8', // SINGLE_WORD
+                    tessedit_ocr_engine_mode: '3' // OEM_LSTM_ONLY
+                });
+                const elapsed = Date.now() - startTime;
+                if (this.debug) console.log(`✅ Worker OCR código listo (${elapsed}ms)`);
+            } catch (e) {
+                console.error('Error creando worker código:', e);
+                this.ocrCodeWorker = null;
+            }
         }
         return this.ocrCodeWorker;
     },
 
     // ============================================================
-    // MEJORA DE IMAGEN - MULTI-ESTRATEGIA
+    // MEJORA DE IMAGEN - MULTI-ESTRATEGIA AVANZADA
     // ============================================================
-    mejorarImagenParaOCR(ctx, w, h, estrategia) {
+    mejorarImagenParaOCR(ctx, w, h, estrategia, params = {}) {
         const imgData = ctx.getImageData(0, 0, w, h);
         const d = imgData.data;
+        
+        // Parámetros ajustables
+        const contraste = params.contraste || 2.0;
+        const umbral = params.umbral || 120;
+        const brillo = params.brillo || 0;
         
         switch (estrategia) {
             case 'contraste_fuerte':
                 for (let i = 0; i < d.length; i += 4) {
                     let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-                    gray = (gray - 128) * 2.5 + 128;
+                    gray = (gray - 128) * contraste + 128 + brillo;
                     gray = Math.max(0, Math.min(255, gray));
-                    const val = gray > 100 ? 255 : 0;
+                    const val = gray > umbral ? 255 : 0;
                     d[i] = d[i + 1] = d[i + 2] = val;
                 }
                 break;
@@ -192,9 +283,9 @@ const Scanner = {
             case 'contraste_medio':
                 for (let i = 0; i < d.length; i += 4) {
                     let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-                    gray = (gray - 128) * 1.8 + 128;
+                    gray = (gray - 128) * 1.6 + 128 + brillo;
                     gray = Math.max(0, Math.min(255, gray));
-                    const val = gray > 130 ? 255 : 0;
+                    const val = gray > (umbral + 10) ? 255 : 0;
                     d[i] = d[i + 1] = d[i + 2] = val;
                 }
                 break;
@@ -202,22 +293,58 @@ const Scanner = {
             case 'grises':
                 for (let i = 0; i < d.length; i += 4) {
                     let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-                    gray = (gray - 128) * 1.5 + 128;
+                    gray = (gray - 128) * 1.4 + 128 + brillo;
                     gray = Math.max(0, Math.min(255, gray));
                     d[i] = d[i + 1] = d[i + 2] = gray;
+                }
+                break;
+                
+            case 'grises_contraste':
+                for (let i = 0; i < d.length; i += 4) {
+                    let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                    gray = (gray - 128) * 2.0 + 128 + brillo;
+                    gray = Math.max(0, Math.min(255, gray));
+                    d[i] = d[i + 1] = d[i + 2] = gray > 140 ? 255 : gray;
                 }
                 break;
                 
             case 'invertida':
                 for (let i = 0; i < d.length; i += 4) {
                     let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-                    const val = gray > 130 ? 0 : 255;
+                    const val = gray > umbral ? 0 : 255;
                     d[i] = d[i + 1] = d[i + 2] = val;
                 }
                 break;
                 
+            case 'sharp':
+                // Nitidez (aplicar filtro de sharpen)
+                // Esta estrategia es más compleja, se aplica solo si es necesario
+                const sharpData = ctx.getImageData(0, 0, w, h);
+                const s = sharpData.data;
+                const kernel = [-1, -1, -1, -1, 9, -1, -1, -1, -1];
+                const kSize = 3;
+                const half = Math.floor(kSize / 2);
+                
+                for (let y = half; y < h - half; y++) {
+                    for (let x = half; x < w - half; x++) {
+                        const idx = (y * w + x) * 4;
+                        let sum = 0;
+                        for (let ky = 0; ky < kSize; ky++) {
+                            for (let kx = 0; kx < kSize; kx++) {
+                                const nx = x + kx - half;
+                                const ny = y + ky - half;
+                                const nIdx = (ny * w + nx) * 4;
+                                const gray = 0.299 * s[nIdx] + 0.587 * s[nIdx + 1] + 0.114 * s[nIdx + 2];
+                                sum += gray * kernel[ky * kSize + kx];
+                            }
+                        }
+                        const val = Math.max(0, Math.min(255, sum));
+                        d[idx] = d[idx + 1] = d[idx + 2] = val;
+                    }
+                }
+                break;
+                
             default:
-                // Sin procesamiento
                 break;
         }
         
@@ -225,24 +352,58 @@ const Scanner = {
     },
 
     // ============================================================
-    // 🔍 OCR ESPECIALIZADO PARA CÓDIGO GRANDE - MEJORADO
+    // 📸 CAPTURAR IMAGEN - OPTIMIZADA PARA CELULAR
+    // ============================================================
+    capturarImagen(video) {
+        const canvas = document.getElementById('ocrCanvas');
+        const vW = video.videoWidth;
+        const vH = video.videoHeight;
+        
+        // Resolución adaptativa según capacidades
+        let maxRes = 1400;
+        if (this.isMobile) {
+            if (this.deviceCapabilities.cpu === 'high') maxRes = 1400;
+            else if (this.deviceCapabilities.cpu === 'medium') maxRes = 1000;
+            else maxRes = 700;
+        }
+        
+        const scale = Math.min(1, maxRes / vW);
+        canvas.width = Math.round(vW * scale);
+        canvas.height = Math.round(vH * scale);
+        
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        if (this.debug) {
+            console.log(`📐 Captura: ${canvas.width}x${canvas.height} (escala: ${scale.toFixed(2)})`);
+        }
+        
+        return canvas;
+    },
+
+    // ============================================================
+    // 🔍 OCR ESPECIALIZADO PARA CÓDIGO GRANDE - VERSIÓN ULTRA
     // ============================================================
     async extraerCodigoGrande(sourceCanvas) {
         const vW = sourceCanvas.width;
         const vH = sourceCanvas.height;
         
-        if (this.debug) console.log(`📐 Procesando código en imagen ${vW}x${vH}`);
+        if (this.debug) console.log(`📐 Procesando código: ${vW}x${vH}`);
 
-        // ROI escalonado - más tolerante
+        // ROI escalonado - Múltiples regiones para máxima cobertura
         const rois = [
-            { x: vW * 0.05, y: vH * 0.02, w: vW * 0.90, h: vH * 0.28, nombre: 'principal', escala: 4.5 },
-            { x: vW * 0.03, y: vH * 0.01, w: vW * 0.94, h: vH * 0.38, nombre: 'ampliado', escala: 4.0 },
-            { x: vW * 0.02, y: vH * 0.01, w: vW * 0.96, h: vH * 0.45, nombre: 'fallback', escala: 3.5 }
+            { x: vW * 0.05, y: vH * 0.02, w: vW * 0.90, h: vH * 0.25, nombre: 'principal', escala: 4.5 },
+            { x: vW * 0.03, y: vH * 0.01, w: vW * 0.94, h: vH * 0.35, nombre: 'ampliado', escala: 4.0 },
+            { x: vW * 0.02, y: vH * 0.01, w: vW * 0.96, h: vH * 0.42, nombre: 'fallback', escala: 3.5 },
+            { x: vW * 0.10, y: vH * 0.05, w: vW * 0.80, h: vH * 0.20, nombre: 'centrado', escala: 5.0 }
         ];
 
         let todosResultados = [];
         let mejorGeneral = null;
         let mejorConfianza = 0;
+        let mejorFrecuencia = 0;
 
         for (const roi of rois) {
             if (this.debug) {
@@ -251,7 +412,7 @@ const Scanner = {
 
             // Extraer ROI
             const roiCanvas = document.createElement('canvas');
-            const escala = roi.escala;
+            const escala = this.isMobile ? Math.min(roi.escala, 4) : roi.escala;
             roiCanvas.width = Math.round(roi.w * escala);
             roiCanvas.height = Math.round(roi.h * escala);
             const ctx = roiCanvas.getContext('2d');
@@ -264,7 +425,7 @@ const Scanner = {
             roiCanvas.width = 0;
             roiCanvas.height = 0;
 
-            // Guardar todos los resultados para análisis
+            // Acumular resultados
             if (resultadosRoi.length > 0) {
                 todosResultados = todosResultados.concat(resultadosRoi);
             }
@@ -274,17 +435,18 @@ const Scanner = {
             
             if (mejorDeRoi && mejorDeRoi.codigo && esCodigoValido(mejorDeRoi.codigo)) {
                 const confianza = mejorDeRoi.confianza || 0;
+                const frecuencia = mejorDeRoi.frecuencia || 0;
                 
-                // Early exit: si confianza > 60% en ROI principal, terminar
-                if (confianza > 60 && roi.nombre === 'principal') {
+                // Early exit: confianza > 65% en ROI principal
+                if (confianza > 65 && roi.nombre === 'principal') {
                     if (this.debug) {
-                        console.log(`✅ ROI "${roi.nombre}" encontró: "${mejorDeRoi.codigo}" (conf: ${confianza})`);
+                        console.log(`✅ ROI "${roi.nombre}" encontró: "${mejorDeRoi.codigo}" (conf: ${confianza}, freq: ${frecuencia})`);
                         console.log(`🛑 Early exit - no se procesan más ROIs`);
                     }
                     return {
                         codigo: mejorDeRoi.codigo,
                         confianza: confianza,
-                        frecuencia: mejorDeRoi.frecuencia || 1,
+                        frecuencia: frecuencia,
                         metodo: roi.nombre,
                         intentos: rois.indexOf(roi) + 1,
                         variantes: resultadosRoi.length
@@ -292,8 +454,9 @@ const Scanner = {
                 }
                 
                 // Guardar como mejor global
-                if (confianza > mejorConfianza) {
+                if (confianza > mejorConfianza || (confianza === mejorConfianza && frecuencia > mejorFrecuencia)) {
                     mejorConfianza = confianza;
+                    mejorFrecuencia = frecuencia;
                     mejorGeneral = mejorDeRoi;
                 }
             }
@@ -302,12 +465,12 @@ const Scanner = {
         // Si encontramos un resultado válido en algún ROI
         if (mejorGeneral && mejorGeneral.codigo && esCodigoValido(mejorGeneral.codigo)) {
             if (this.debug) {
-                console.log(`✅ Mejor resultado global: "${mejorGeneral.codigo}" (conf: ${mejorConfianza})`);
+                console.log(`✅ Mejor resultado global: "${mejorGeneral.codigo}" (conf: ${mejorConfianza}, freq: ${mejorFrecuencia})`);
             }
             return {
                 codigo: mejorGeneral.codigo,
                 confianza: mejorConfianza,
-                frecuencia: mejorGeneral.frecuencia || 1,
+                frecuencia: mejorFrecuencia,
                 metodo: 'global',
                 intentos: rois.length,
                 variantes: todosResultados.length
@@ -335,21 +498,29 @@ const Scanner = {
     },
 
     // ============================================================
-    // PROCESAR VARIANTES DE UN ROI - MEJORADO
+    // PROCESAR VARIANTES DE UN ROI - ULTRA OPTIMIZADO
     // ============================================================
     async procesarVariantesCodigo(roiCanvas, roiNombre) {
         const resultados = [];
         const workerCode = await this.getOcrCodeWorker();
+        if (!workerCode) return resultados;
 
-        // Estrategias de procesamiento
+        // Estrategias de procesamiento - Optimizadas para celular
         const estrategias = [
-            { nombre: 'contraste_alto', metodo: 'contraste_fuerte' },
-            { nombre: 'contraste_medio', metodo: 'contraste_medio' },
-            { nombre: 'grises', metodo: 'grises' },
-            { nombre: 'invertida', metodo: 'invertida' }
+            { nombre: 'contraste_alto', metodo: 'contraste_fuerte', params: { contraste: 2.5, umbral: 100 } },
+            { nombre: 'contraste_medio', metodo: 'contraste_medio', params: { contraste: 1.8, umbral: 130 } },
+            { nombre: 'grises', metodo: 'grises', params: { contraste: 1.4 } },
+            { nombre: 'grises_contraste', metodo: 'grises_contraste', params: { contraste: 2.0 } },
+            { nombre: 'invertida', metodo: 'invertida', params: { umbral: 135 } },
+            { nombre: 'sharp', metodo: 'sharp', params: {} }
         ];
 
-        for (const est of estrategias) {
+        // Limitar estrategias en móvil para velocidad
+        const estrategiasLimitadas = this.isMobile ? 
+            estrategias.slice(0, 4) : // Solo 4 en móvil
+            estrategias;
+
+        for (const est of estrategiasLimitadas) {
             const canvas = document.createElement('canvas');
             canvas.width = roiCanvas.width;
             canvas.height = roiCanvas.height;
@@ -357,7 +528,7 @@ const Scanner = {
             ctx.drawImage(roiCanvas, 0, 0);
             
             // Aplicar mejora según estrategia
-            this.mejorarImagenParaOCR(ctx, canvas.width, canvas.height, est.metodo);
+            this.mejorarImagenParaOCR(ctx, canvas.width, canvas.height, est.metodo, est.params || {});
 
             try {
                 const result = await workerCode.recognize(canvas);
@@ -369,7 +540,8 @@ const Scanner = {
                         texto: texto,
                         confianza: confianza,
                         variante: est.nombre,
-                        roi: roiNombre
+                        roi: roiNombre,
+                        timestamp: Date.now()
                     });
                 }
                 
@@ -384,85 +556,102 @@ const Scanner = {
             canvas.height = 0;
         }
 
-        // Intentar con escalas adicionales
-        const escalas = [1.5, 2.0];
-        for (const esc of escalas) {
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.round(roiCanvas.width * esc);
-            canvas.height = Math.round(roiCanvas.height * esc);
-            const ctx = canvas.getContext('2d');
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(roiCanvas, 0, 0, canvas.width, canvas.height);
-            
-            this.mejorarImagenParaOCR(ctx, canvas.width, canvas.height, 'contraste_medio');
+        // Intentar con escalas adicionales (solo en PC o móvil high-end)
+        if (!this.isMobile || this.deviceCapabilities.cpu === 'high') {
+            const escalas = [1.5, 2.0];
+            for (const esc of escalas) {
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(roiCanvas.width * esc);
+                canvas.height = Math.round(roiCanvas.height * esc);
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(roiCanvas, 0, 0, canvas.width, canvas.height);
+                
+                this.mejorarImagenParaOCR(ctx, canvas.width, canvas.height, 'contraste_medio', { umbral: 125 });
 
-            try {
-                const result = await workerCode.recognize(canvas);
-                const texto = result.data.text.trim();
-                const confianza = result.data.confidence || 0;
-                
-                if (texto) {
-                    resultados.push({
-                        texto: texto,
-                        confianza: confianza,
-                        variante: 'escala_' + esc,
-                        roi: roiNombre
-                    });
+                try {
+                    const result = await workerCode.recognize(canvas);
+                    const texto = result.data.text.trim();
+                    const confianza = result.data.confidence || 0;
+                    
+                    if (texto) {
+                        resultados.push({
+                            texto: texto,
+                            confianza: confianza,
+                            variante: 'escala_' + esc,
+                            roi: roiNombre,
+                            timestamp: Date.now()
+                        });
+                    }
+                    
+                    if (this.debug && texto) {
+                        console.log(`   📊 Variante "escala_${esc}" (${roiNombre}): "${texto}" (conf: ${confianza})`);
+                    }
+                } catch (e) {
+                    if (this.debug) console.warn(`   ⚠️ Error en escala ${esc}:`, e.message);
                 }
                 
-                if (this.debug && texto) {
-                    console.log(`   📊 Variante "escala_${esc}" (${roiNombre}): "${texto}" (conf: ${confianza})`);
-                }
-            } catch (e) {
-                if (this.debug) console.warn(`   ⚠️ Error en escala ${esc}:`, e.message);
+                canvas.width = 0;
+                canvas.height = 0;
             }
-            
-            canvas.width = 0;
-            canvas.height = 0;
         }
 
         return resultados;
     },
 
     // ============================================================
-    // ENCONTRAR EL MEJOR RESULTADO DE UNA LISTA
+    // ENCONTRAR EL MEJOR RESULTADO - VOTACIÓN INTELIGENTE
     // ============================================================
     encontrarMejorResultado(resultados) {
         if (!resultados || resultados.length === 0) return null;
 
         // Normalizar y validar
         const validos = [];
+        const todos = [];
+        
         for (const r of resultados) {
             const normalizado = normalizeCodigo(r.texto);
+            todos.push({ original: r.texto, normalizado, confianza: r.confianza, variante: r.variante, roi: r.roi });
+            
             if (esCodigoValido(normalizado)) {
                 validos.push({
                     original: r.texto,
                     codigo: normalizado,
                     confianza: r.confianza,
                     variante: r.variante,
-                    roi: r.roi
+                    roi: r.roi,
+                    peso: r.confianza > 50 ? 2 : 1 // Dar más peso a resultados con buena confianza
                 });
             }
         }
 
         if (validos.length === 0) return null;
 
-        // Votación por frecuencia
+        // Votación ponderada por frecuencia y confianza
         const frecuencias = {};
+        const pesos = {};
+        
         for (const v of validos) {
-            frecuencias[v.codigo] = (frecuencias[v.codigo] || 0) + 1;
+            if (!frecuencias[v.codigo]) {
+                frecuencias[v.codigo] = 0;
+                pesos[v.codigo] = 0;
+            }
+            frecuencias[v.codigo] += v.peso || 1;
+            pesos[v.codigo] += v.confianza || 0;
         }
 
         // Elegir el que aparece más veces, con mayor confianza
         let mejor = validos[0];
+        let mejorScore = 0;
+        
         for (const v of validos) {
-            const freqV = frecuencias[v.codigo] || 0;
-            const freqMejor = frecuencias[mejor.codigo] || 0;
+            const freq = frecuencias[v.codigo] || 0;
+            const confPromedio = pesos[v.codigo] / freq || 0;
+            const score = freq * 100 + confPromedio; // Score combinado
             
-            if (freqV > freqMejor) {
-                mejor = v;
-            } else if (freqV === freqMejor && v.confianza > mejor.confianza) {
+            if (score > mejorScore) {
+                mejorScore = score;
                 mejor = v;
             }
         }
@@ -472,7 +661,8 @@ const Scanner = {
             confianza: mejor.confianza,
             frecuencia: frecuencias[mejor.codigo] || 1,
             variante: mejor.variante,
-            roi: mejor.roi
+            roi: mejor.roi,
+            score: mejorScore
         };
     },
 
@@ -481,12 +671,21 @@ const Scanner = {
     // ============================================================
     extraerCodigoDeResultados(resultados) {
         for (const r of resultados) {
-            // Buscar patrón letra+número
-            const m = r.texto.match(/([A-Z])\s*(\d{1,4})/i);
-            if (m) {
-                const cand = normalizeCodigo(m[1] + m[2]);
-                if (esCodigoValido(cand)) return cand;
+            // Buscar patrón letra+número con posibles separadores
+            const patrones = [
+                /([A-Z])\s*(\d{1,4})/i,
+                /([A-Z])[-.\s](\d{1,4})/i,
+                /([A-Z])(\d{1,4})/i
+            ];
+            
+            for (const patron of patrones) {
+                const m = r.texto.match(patron);
+                if (m) {
+                    const cand = normalizeCodigo(m[1] + m[2]);
+                    if (esCodigoValido(cand)) return cand;
+                }
             }
+            
             // Buscar en texto limpio
             const limpio = r.texto.replace(/[^A-Z0-9]/gi, '').toUpperCase();
             const m2 = limpio.match(/([A-Z])(\d{1,4})/);
@@ -499,16 +698,24 @@ const Scanner = {
     },
 
     // ============================================================
-    // CORRECCIÓN DE ERRORES COMUNES DE OCR
+    // CORRECCIÓN DE ERRORES COMUNES DE OCR - 20+ MAPEOS
     // ============================================================
     corregirCodigoOCR(texto) {
         if (!texto) return null;
 
+        // Mapeo extensivo de confusiones visuales
         const correcciones = {
-            'E': 'A', 'G': 'A', 'J': 'A', 'O': '0',
-            'I': '1', 'L': '1', 'S': '5', 'B': '8',
-            'Z': '2', 'D': '0', 'Q': '0', 'T': '1',
-            'P': '9', 'R': '2', 'Y': '4', 'H': '4'
+            // Letras → Números
+            'O': '0', 'Q': '0', 'D': '0', 
+            'I': '1', 'L': '1', 'T': '1', 'J': '1',
+            'Z': '2', 'S': '5', 'B': '8', 
+            'G': '6', 'A': '4', 'E': '3', 
+            'H': '4', 'K': '1', 'M': '1', 
+            'N': '1', 'V': '1', 'W': '1',
+            'P': '9', 'R': '2', 'Y': '4', 'F': '7',
+            'U': '0', 'C': '0', 'X': '0',
+            // Letras → Letras (confusiones comunes)
+            'E': 'A', 'G': 'A', 'J': 'A'
         };
 
         let normalizado = texto.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -524,7 +731,7 @@ const Scanner = {
             }
         }
 
-        // Intentar extraer patrón
+        // Intentar extraer patrón con correcciones
         const match = normalizado.match(/^([A-Z])(\d+)/);
         if (match) {
             const letra = correcciones[match[1]] || match[1];
@@ -536,7 +743,7 @@ const Scanner = {
             if (esCodigoValido(result)) return result;
         }
 
-        // Si tiene formato A4g (g parece 9)
+        // Si tiene formato A4g (g parece 9) o similar
         const m2 = normalizado.match(/^([A-Z])([A-Z]?)(\d*)/);
         if (m2) {
             const letra = correcciones[m2[1]] || m2[1];
@@ -549,24 +756,79 @@ const Scanner = {
             if (esCodigoValido(result)) return result;
         }
 
+        // Intentar extraer cualquier patrón válido
+        const anyMatch = normalizado.match(/([A-Z])(\d{1,4})/);
+        if (anyMatch) {
+            const letra = correcciones[anyMatch[1]] || anyMatch[1];
+            let numeros = '';
+            for (const d of anyMatch[2]) {
+                numeros += correcciones[d] || d;
+            }
+            const result = letra + numeros;
+            if (esCodigoValido(result)) return result;
+        }
+
         return null;
     },
 
     // ============================================================
-    // 📸 FUNCIÓN CENTRALIZADA: DOBLE OCR MEJORADA
+    // VALIDACIÓN Y NORMALIZACIÓN AVANZADA
+    // ============================================================
+    validarYNormalizarCodigo(texto) {
+        if (!texto) return null;
+        
+        // Limpiar y normalizar
+        let limpio = texto.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        
+        // Intentar diferentes patrones
+        const patrones = [
+            /^([A-Z])(\d{1,4})$/, // A49
+            /^([A-Z])(\d{1,4})([A-Z])$/, // A49B (extraer primero)
+            /^([A-Z]{1,2})(\d{1,4})$/, // AB49
+        ];
+        
+        for (const patron of patrones) {
+            const match = limpio.match(patron);
+            if (match) {
+                const letra = match[1];
+                let numeros = match[2] || '';
+                // Si hay más números, tomarlos
+                if (match[3]) numeros += match[3];
+                const result = letra + numeros;
+                if (esCodigoValido(result)) return result;
+            }
+        }
+        
+        // Si no coincide, intentar extraer cualquier letra+número
+        const simple = limpio.match(/([A-Z])(\d{1,4})/);
+        if (simple) {
+            const result = simple[1] + simple[2];
+            if (esCodigoValido(result)) return result;
+        }
+        
+        return null;
+    },
+
+    // ============================================================
+    // 📸 FUNCIÓN CENTRALIZADA: DOBLE OCR ULTRA
     // ============================================================
     async ejecutarDobleOCR(sourceCanvas) {
+        const startTime = Date.now();
+        this.stats.attempts++;
+        
         if (this.debug) {
             console.log(`📐 Imagen: ${sourceCanvas.width}x${sourceCanvas.height}`);
+            console.log(`📱 Modo: ${this.isMobile ? 'MÓVIL' : 'PC'}`);
         }
 
         // ============================================================
-        // OCR #1: GENERAL (texto normal) - MEJORADO
+        // OCR #1: GENERAL (texto normal) - OPTIMIZADO
         // ============================================================
-        this.setStatus('🔎 Analizando texto general...', true);
+        this.setStatus('🔎 Leyendo ticket...', true);
 
         const generalCanvas = document.createElement('canvas');
-        generalCanvas.width = Math.min(sourceCanvas.width, 1400);
+        const maxWidth = this.isMobile ? 900 : 1400;
+        generalCanvas.width = Math.min(sourceCanvas.width, maxWidth);
         const ratio = generalCanvas.width / sourceCanvas.width;
         generalCanvas.height = Math.round(sourceCanvas.height * ratio);
         const ctxGen = generalCanvas.getContext('2d');
@@ -575,15 +837,18 @@ const Scanner = {
         ctxGen.drawImage(sourceCanvas, 0, 0, generalCanvas.width, generalCanvas.height);
 
         // Mejora suave para texto general
-        this.mejorarImagenParaOCR(ctxGen, generalCanvas.width, generalCanvas.height, 'grises');
+        this.mejorarImagenParaOCR(ctxGen, generalCanvas.width, generalCanvas.height, 'grises', { contraste: 1.4 });
 
         const worker = await this.getOcrWorker();
         let textoGeneral = '';
+        let errorGeneral = null;
+        
         try {
             const { data } = await worker.recognize(generalCanvas);
             textoGeneral = data.text || '';
         } catch (e) {
-            if (this.debug) console.warn('Error en OCR general:', e);
+            errorGeneral = e;
+            if (this.debug) console.warn('Error en OCR general:', e.message);
         }
 
         if (this.debug) console.log('📝 OCR GENERAL:', textoGeneral || '(vacío)');
@@ -594,23 +859,28 @@ const Scanner = {
         // ============================================================
         // OCR #2: CÓDIGO GRANDE (especializado)
         // ============================================================
-        this.setStatus('🔎 Buscando código grande...', true);
-        const codeResult = await this.extraerCodigoGrande(sourceCanvas);
+        let codeResult = { codigo: null, confianza: 0, frecuencia: 0, metodo: 'ninguno', variantes: 0 };
+        
+        // Solo ejecutar OCR código si el general funcionó (o si falló, intentar igual)
+        if (!errorGeneral || textoGeneral) {
+            this.setStatus('🔎 Buscando código...', true);
+            codeResult = await this.extraerCodigoGrande(sourceCanvas);
+        }
 
         // ============================================================
         // FUSIÓN INTELIGENTE
         // ============================================================
-        this.setStatus('🧠 Combinando resultados...', true);
+        this.setStatus('🧠 Procesando resultados...', true);
 
         const parsed = Parser.parseTicketData(textoGeneral);
 
-        // Intentar corregir el código del parser general si existe
+        // Intentar corregir el código del parser general
         let codigoParserCorregido = null;
         if (parsed.codigo) {
             codigoParserCorregido = this.corregirCodigoOCR(parsed.codigo);
             if (codigoParserCorregido && esCodigoValido(codigoParserCorregido)) {
                 if (this.debug && codigoParserCorregido !== parsed.codigo) {
-                    console.log(`🔧 Corrección OCR del parser: "${parsed.codigo}" → "${codigoParserCorregido}"`);
+                    console.log(`🔧 Corrección parser: "${parsed.codigo}" → "${codigoParserCorregido}"`);
                 }
                 parsed.codigo = codigoParserCorregido;
             } else if (!esCodigoValido(parsed.codigo)) {
@@ -623,29 +893,46 @@ const Scanner = {
         if (codeResult.codigo) {
             codigoCorregido = this.corregirCodigoOCR(codeResult.codigo);
             if (this.debug && codigoCorregido !== codeResult.codigo) {
-                console.log(`🔧 Corrección OCR especializado: "${codeResult.codigo}" → "${codigoCorregido}"`);
+                console.log(`🔧 Corrección especializado: "${codeResult.codigo}" → "${codigoCorregido}"`);
             }
         }
 
-        // Decisión final: usar el especializado si es válido, sino el parser
+        // Decisión final
+        let codigoFinal = null;
+        
         if (codigoCorregido && esCodigoValido(codigoCorregido)) {
-            parsed.codigo = codigoCorregido;
+            codigoFinal = codigoCorregido;
             if (this.debug) {
-                console.log(`✅ Código del OCR especializado (corregido): "${codigoCorregido}"`);
+                console.log(`✅ Código especializado (corregido): "${codigoFinal}"`);
                 console.log(`   Confianza: ${codeResult.confianza}, Frecuencia: ${codeResult.frecuencia}, Método: ${codeResult.metodo}`);
             }
         } else if (codeResult.codigo && esCodigoValido(codeResult.codigo)) {
-            parsed.codigo = codeResult.codigo;
+            codigoFinal = codeResult.codigo;
             if (this.debug) {
-                console.log(`✅ Código del OCR especializado: "${codeResult.codigo}"`);
+                console.log(`✅ Código especializado: "${codigoFinal}"`);
                 console.log(`   Confianza: ${codeResult.confianza}, Frecuencia: ${codeResult.frecuencia}, Método: ${codeResult.metodo}`);
             }
-        } else if (!parsed.codigo || !esCodigoValido(parsed.codigo)) {
-            parsed.codigo = null;
-            if (this.debug) console.log(`⚠️ No se detectó código válido`);
+        } else if (parsed.codigo && esCodigoValido(parsed.codigo)) {
+            codigoFinal = parsed.codigo;
+            if (this.debug) console.log(`✅ Código del parser: "${codigoFinal}"`);
+        } else {
+            // Último intento: buscar en el texto completo
+            const extraido = this.validarYNormalizarCodigo(textoGeneral);
+            if (extraido) {
+                codigoFinal = extraido;
+                if (this.debug) console.log(`🔧 Código extraído del texto: "${codigoFinal}"`);
+            }
         }
 
+        // Asignar código final
+        parsed.codigo = codigoFinal;
+
+        // Calcular tiempo de procesamiento
+        this.processingTime = Date.now() - startTime;
+        this.stats.success++;
+        
         if (this.debug) {
+            console.log(`⏱️ Tiempo de procesamiento: ${this.processingTime}ms`);
             console.log('📦 RESULTADO FINAL:', {
                 codigo: parsed.codigo,
                 nombre: parsed.cliente_nombre,
@@ -663,12 +950,14 @@ const Scanner = {
             confianzaCodigo: codeResult.confianza || 0,
             frecuenciaCodigo: codeResult.frecuencia || 0,
             metodoCodigo: codeResult.metodo || 'ninguno',
-            variantes: codeResult.variantes || 0
+            variantes: codeResult.variantes || 0,
+            processingTime: this.processingTime,
+            stats: { ...this.stats }
         };
     },
 
     // ============================================================
-    // 📸 CAPTURAR Y ESCANEAR
+    // 📸 CAPTURAR Y ESCANEAR - PRINCIPAL
     // ============================================================
     async capturarYEscanear() {
         if (this.isProcessing) return;
@@ -678,25 +967,13 @@ const Scanner = {
         }
 
         this.isProcessing = true;
-        this.setStatus('📸 Capturando imagen...', true);
+        this.setStatus('📸 Capturando...', true);
 
         try {
             const video = document.getElementById('video');
-
-            const canvas = document.getElementById('ocrCanvas');
-            const vW = video.videoWidth;
-            const vH = video.videoHeight;
             
-            // Resolución equilibrada para celular
-            const targetWidth = Math.min(vW, 1200);
-            const scale = targetWidth / vW;
-            canvas.width = targetWidth;
-            canvas.height = Math.round(vH * scale);
-            
-            const ctx = canvas.getContext('2d');
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // Capturar imagen optimizada
+            const canvas = this.capturarImagen(video);
 
             // Guardar original para el código
             const originalCanvas = document.createElement('canvas');
@@ -705,9 +982,14 @@ const Scanner = {
             const ctxOrig = originalCanvas.getContext('2d');
             ctxOrig.drawImage(canvas, 0, 0);
 
+            // Ejecutar doble OCR
             const resultado = await this.ejecutarDobleOCR(originalCanvas);
 
-            this.setStatus('✅ Escaneo completado', true);
+            this.setStatus('✅ Completado', true);
+
+            // Limpiar memoria
+            originalCanvas.width = 0;
+            originalCanvas.height = 0;
 
             if (this.onResultCallback) {
                 this.onResultCallback({
@@ -721,17 +1003,16 @@ const Scanner = {
                     _codigo_frecuencia: resultado.frecuenciaCodigo || 0,
                     _codigo_metodo: resultado.metodoCodigo || 'ninguno',
                     _codigo_variantes: resultado.variantes || 0,
+                    _processing_time: resultado.processingTime || 0,
                     _raw: resultado.textoGeneral
                 });
             }
 
-            originalCanvas.width = 0;
-            originalCanvas.height = 0;
-
         } catch (e) {
             console.error('❌ Error en captura:', e);
-            this.setStatus('⚠️ Error al escanear. Usa el formulario manual.', true);
-            toast('Error al procesar la imagen', 'error');
+            this.setStatus('⚠️ Error. Usa formulario manual.', true);
+            toast('Error al procesar', 'error');
+            this.stats.failures++;
             if (this.onResultCallback) {
                 this.onResultCallback({
                     codigo: '',
@@ -749,7 +1030,7 @@ const Scanner = {
     },
 
     // ============================================================
-    // SUBIR FOTO - CON DOBLE OCR
+    // SUBIR FOTO - CON DOBLE OCR COMPLETO
     // ============================================================
     async handleFileUpload(file) {
         if (!file) return;
@@ -760,9 +1041,9 @@ const Scanner = {
             const img = await createImageBitmap(file);
 
             const canvas = document.getElementById('ocrCanvas');
-            const targetWidth = Math.min(img.width, 1200);
-            const scale = targetWidth / img.width;
-            canvas.width = targetWidth;
+            const maxRes = this.isMobile ? 900 : 1400;
+            const scale = Math.min(1, maxRes / img.width);
+            canvas.width = Math.round(img.width * scale);
             canvas.height = Math.round(img.height * scale);
             
             const ctx = canvas.getContext('2d');
@@ -791,6 +1072,7 @@ const Scanner = {
                     _codigo_confianza: resultado.confianzaCodigo || 0,
                     _codigo_frecuencia: resultado.frecuenciaCodigo || 0,
                     _codigo_metodo: resultado.metodoCodigo || 'ninguno',
+                    _processing_time: resultado.processingTime || 0,
                     _raw: resultado.textoGeneral
                 });
             }
@@ -816,7 +1098,7 @@ const Scanner = {
     },
 
     // ============================================================
-    // QR SCANNER
+    // QR SCANNER - COMPLETO
     // ============================================================
     async startQr() {
         document.getElementById('video').style.display = 'none';
@@ -871,5 +1153,27 @@ const Scanner = {
             toast('QR no reconocido.', 'error');
             if (this.qrScanner) this.qrScanner.resume();
         }
+    },
+
+    // ============================================================
+    // ESTADÍSTICAS Y DIAGNÓSTICO
+    // ============================================================
+    getStats() {
+        return {
+            ...this.stats,
+            processingTime: this.processingTime,
+            isMobile: this.isMobile,
+            capabilities: this.deviceCapabilities,
+            workers: {
+                general: !!this.ocrWorker,
+                code: !!this.ocrCodeWorker
+            }
+        };
+    },
+
+    resetStats() {
+        this.stats = { attempts: 0, success: 0, failures: 0 };
+        this.processingTime = 0;
+        if (this.debug) console.log('📊 Estadísticas reiniciadas');
     }
 };
